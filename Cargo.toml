@@ -10,3 +10,7 @@ repository = "https://github.com/dmitmel/cc-mod-manager-launcher.git"
 homepage = "https://github.com/dmitmel/cc-mod-manager-launcher"
 
 [dependencies]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "*"
+cocoa = "*"
