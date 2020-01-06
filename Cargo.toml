@@ -1,0 +1,12 @@
+[package]
+edition = "2018"
+publish = false
+name = "cc-mod-manager-launcher"
+version = "0.0.0"
+authors = ["Dmytro Meleshko <dmytro.meleshko@gmail.com>"]
+description = "launcher for the CC mod manager"
+license = "MIT"
+repository = "https://github.com/dmitmel/cc-mod-manager-launcher.git"
+homepage = "https://github.com/dmitmel/cc-mod-manager-launcher"
+
+[dependencies]
