@@ -1,18 +1,30 @@
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "macos")]
-use macos::*;
+mod native_ui;
 
 fn main() {
+  native_ui::init();
+
+  eprintln!(
+    "{:?}",
+    native_ui::show_alert(native_ui::AlertConfig {
+      style: native_ui::AlertStyle::Problem,
+      title: "ACHTUNG".to_owned(),
+      description: Some("PERFORMANCE WARNUNG".to_owned()),
+      primary_button_text: "OK".to_owned(),
+      secondary_button_text: Some("Cancel".to_owned()),
+    })
+  );
+
   eprintln!("trying to autodetect CrossCode installation path");
   if let Some(game_path) = get_possible_game_locations().iter().find(|path| {
     eprintln!("checking {}", path.display());
     is_game_installed_in(path)
   }) {
     println!("detected");
-  } else if let Some(path) = open_pick_folder_dialog() {
+  }
+
+  if let Some(path) = native_ui::open_pick_folder_dialog() {
     println!("{}", path.display());
   }
 }
