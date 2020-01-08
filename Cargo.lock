@@ -79,7 +79,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450b8da92aa6f274e7c6437692f9f2ce6d701fb73bacfcf87897b3f89a4c20e"
 
 [[package]]
-name = "cc-mod-manager-launcher"
+name = "ccloader-installer"
 version = "0.0.0"
 dependencies = [
  "cocoa",

@@ -1,13 +1,13 @@
 [package]
 edition = "2018"
 publish = false
-name = "cc-mod-manager-launcher"
+name = "ccloader-installer"
 version = "0.0.0"
 authors = ["Dmytro Meleshko <dmytro.meleshko@gmail.com>"]
-description = "launcher for the CC mod manager"
+description = "CCLoader installer"
 license = "MIT"
-repository = "https://github.com/dmitmel/cc-mod-manager-launcher.git"
-homepage = "https://github.com/dmitmel/cc-mod-manager-launcher"
+repository = "https://github.com/dmitmel/ccloader-installer.git"
+homepage = "https://github.com/dmitmel/ccloader-installer"
 
 [dependencies]
 dirs = "*"
