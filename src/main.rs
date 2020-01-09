@@ -1,21 +1,100 @@
+use curl::easy::{Easy as Curl, List as CurlList};
+// use flate2::bufread::GzDecoder;
 use std::path::{Path, PathBuf};
+// use tar::Archive;
+use serde_json::Value as JsonValue;
 
 mod native_ui;
 
+const CCLOADER_GITHUB_API_RELEASE_URL: &str =
+  // "https://api.github.com/repos/dmitmel/CCLoader/releases/latest";
+  "http://localhost:8080/latest.json";
+
 fn main() {
+  curl::init();
   native_ui::init();
 
-  let alert_response =
-    native_ui::show_alert(native_ui::AlertConfig {
-      style: native_ui::AlertStyle::Info,
-      title: "Welcome to CC Mod Manager Launcher".to_owned(),
-      description: Some("This program starts CC Mod Manager by reusing nw.js bundled with CrossCode. However, it first needs to locate your CrossCode installation.".to_owned()),
-      primary_button_text: "Try to autodetect CC".to_owned(),
-      secondary_button_text: Some("Specify path to CC manually".to_owned()),
-    });
-  if alert_response == None {
-    return;
-  };
+  let mut client = Curl::new();
+  client.fail_on_error(true).unwrap();
+  client.follow_location(true).unwrap();
+  client
+    .useragent(&format!(
+      "{} v{} by dmitmel",
+      env!("CARGO_PKG_NAME"),
+      env!("CARGO_PKG_VERSION")
+    ))
+    .unwrap();
+  client
+    .http_headers({
+      let mut http_headers = CurlList::new();
+      http_headers.append("Accept: application/vnd.github.v3+json").unwrap();
+      http_headers
+    })
+    .unwrap();
+  client.url(CCLOADER_GITHUB_API_RELEASE_URL).unwrap();
+
+  let mut release_json_bytes: Vec<u8> = Vec::new();
+  {
+    let mut transfer = client.transfer();
+    transfer
+      .write_function(|chunk| {
+        release_json_bytes.extend_from_slice(chunk);
+        Ok(chunk.len())
+      })
+      .unwrap();
+    transfer.perform().unwrap();
+  }
+
+  let release_data: JsonValue =
+    serde_json::from_slice(&release_json_bytes).unwrap();
+  let ccloader_download_url =
+    get_download_url_from_release_data(&release_data).unwrap();
+  println!("{}", ccloader_download_url);
+
+  // let mut compressed_archive_data: Vec<u8> = Vec::new();
+
+  // eprintln!("downloading {}", CCLOADER_TARBALL_URL);
+
+  // {
+  //   let mut client = Curl::new();
+  //   client.follow_location(true).unwrap();
+  //   client.url(CCLOADER_TARBALL_URL).unwrap();
+  //   let mut transfer = client.transfer();
+  //   transfer
+  //     .write_function(|chunk| {
+  //       compressed_archive_data.extend_from_slice(chunk);
+  //       Ok(chunk.len())
+  //     })
+  //     .unwrap();
+  //   transfer.perform().unwrap();
+  // }
+
+  // let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
+  // let mut archive = Archive::new(&mut decoder);
+  // archive.set_preserve_permissions(true);
+
+  // for entry in archive.entries().unwrap() {
+  //   // Make sure there wasn't an I/O error
+  //   let mut entry = entry.unwrap();
+
+  //   // Inspect metadata about the file
+  //   println!("{:?}", entry.header().path().unwrap());
+  //   println!("{}", entry.header().size().unwrap());
+  // }
+
+  // archive.unpack("ccloader").unwrap();
+
+  // let alert_response =
+  //   native_ui::show_alert(native_ui::AlertConfig {
+  //     style: native_ui::AlertStyle::Info,
+  //     title: "Welcome to CC Mod Manager Launcher".to_owned(),
+  //     description: Some("This program starts CC Mod Manager by reusing nw.js bundled with CrossCode. However, it first needs to locate your CrossCode installation.".to_owned()),
+  //     primary_button_text: "Try to autodetect CC".to_owned(),
+  //     secondary_button_text: Some("Specify path to CC manually".to_owned()),
+  //   });
+  // if alert_response == None {
+  //   return;
+  // };
 
   // let try_to_autodetect =
   //   alert_response == Some(native_ui::AlertResponse::PrimaryButtonPressed);
@@ -27,26 +106,26 @@ fn main() {
   //   }
   // }
 
-  while let Some(path) = native_ui::open_pick_folder_dialog() {
-    if is_game_installed_in(&path) {
-      println!("{}", path.display());
-      break;
-    } else {
-      let alert_response = native_ui::show_alert(native_ui::AlertConfig {
-        style: native_ui::AlertStyle::Problem,
-        title:
-          "Couldn't detect a CrossCode installation here. Please, try again."
-            .to_owned(),
-        description: None,
-        primary_button_text: "Specify path to CC manually".to_owned(),
-        secondary_button_text: Some("Exit".to_owned()),
-      });
-      if alert_response != Some(native_ui::AlertResponse::PrimaryButtonPressed)
-      {
-        break;
-      }
-    }
-  }
+  // while let Some(path) = native_ui::open_pick_folder_dialog() {
+  //   if is_game_installed_in(&path) {
+  //     println!("{}", path.display());
+  //     break;
+  //   } else {
+  //     let alert_response = native_ui::show_alert(native_ui::AlertConfig {
+  //       style: native_ui::AlertStyle::Problem,
+  //       title:
+  //         "Couldn't detect a CrossCode installation here. Please, try again."
+  //           .to_owned(),
+  //       description: None,
+  //       primary_button_text: "Specify path to CC manually".to_owned(),
+  //       secondary_button_text: Some("Exit".to_owned()),
+  //     });
+  //     if alert_response != Some(native_ui::AlertResponse::PrimaryButtonPressed)
+  //     {
+  //       break;
+  //     }
+  //   }
+  // }
 }
 
 fn autodetect_game_location() -> Option<PathBuf> {
@@ -90,4 +169,13 @@ fn get_possible_game_locations() -> Vec<PathBuf> {
     PathBuf::from("C:\\Program Files (x86)/Steam/steamapps/common/CrossCode"),
   ];
   result
+}
+
+fn get_download_url_from_release_data(release: &JsonValue) -> Option<&str> {
+  let assets: &Vec<JsonValue> = release["assets"].as_array()?;
+  let ccloader_asset: &JsonValue = assets.iter().find(|asset| {
+    asset["name"].as_str().map_or(false, |name| name.starts_with("ccloader_"))
+  })?;
+  let url: &str = ccloader_asset["browser_download_url"].as_str()?;
+  Some(url)
 }
