@@ -1,8 +1,9 @@
 use curl::easy::{Easy as Curl, List as CurlList};
-// use flate2::bufread::GzDecoder;
-use std::path::{Path, PathBuf};
-// use tar::Archive;
+use flate2::bufread::GzDecoder;
 use serde_json::Value as JsonValue;
+use std::path::{Path, PathBuf};
+use std::str;
+use tar::Archive;
 
 mod native_ui;
 
@@ -24,6 +25,8 @@ fn main() {
       env!("CARGO_PKG_VERSION")
     ))
     .unwrap();
+
+  client.url(CCLOADER_GITHUB_API_RELEASE_URL).unwrap();
   client
     .http_headers({
       let mut http_headers = CurlList::new();
@@ -31,19 +34,19 @@ fn main() {
       http_headers
     })
     .unwrap();
-  client.url(CCLOADER_GITHUB_API_RELEASE_URL).unwrap();
-
-  let mut release_json_bytes: Vec<u8> = Vec::new();
-  {
+  let release_json_bytes = {
+    let mut body: Vec<u8> = Vec::new();
     let mut transfer = client.transfer();
     transfer
       .write_function(|chunk| {
-        release_json_bytes.extend_from_slice(chunk);
+        body.extend_from_slice(chunk);
         Ok(chunk.len())
       })
       .unwrap();
     transfer.perform().unwrap();
-  }
+    drop(transfer);
+    body
+  };
 
   let release_data: JsonValue =
     serde_json::from_slice(&release_json_bytes).unwrap();
@@ -51,36 +54,37 @@ fn main() {
     get_download_url_from_release_data(&release_data).unwrap();
   println!("{}", ccloader_download_url);
 
-  // let mut compressed_archive_data: Vec<u8> = Vec::new();
+  client.url(ccloader_download_url).unwrap();
+  client
+    .http_headers({
+      let mut http_headers = CurlList::new();
+      http_headers.append("Accept: */*").unwrap();
+      http_headers
+    })
+    .unwrap();
+  let compressed_archive_data = {
+    let mut body: Vec<u8> = Vec::new();
+    let mut transfer = client.transfer();
+    transfer
+      .write_function(|chunk| {
+        body.extend_from_slice(chunk);
+        Ok(chunk.len())
+      })
+      .unwrap();
+    transfer.perform().unwrap();
+    drop(transfer);
+    body
+  };
 
-  // eprintln!("downloading {}", CCLOADER_TARBALL_URL);
+  let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
+  let mut archive = Archive::new(&mut decoder);
+  archive.set_preserve_permissions(true);
 
-  // {
-  //   let mut client = Curl::new();
-  //   client.follow_location(true).unwrap();
-  //   client.url(CCLOADER_TARBALL_URL).unwrap();
-  //   let mut transfer = client.transfer();
-  //   transfer
-  //     .write_function(|chunk| {
-  //       compressed_archive_data.extend_from_slice(chunk);
-  //       Ok(chunk.len())
-  //     })
-  //     .unwrap();
-  //   transfer.perform().unwrap();
-  // }
-
-  // let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
-  // let mut archive = Archive::new(&mut decoder);
-  // archive.set_preserve_permissions(true);
-
-  // for entry in archive.entries().unwrap() {
-  //   // Make sure there wasn't an I/O error
-  //   let mut entry = entry.unwrap();
-
-  //   // Inspect metadata about the file
-  //   println!("{:?}", entry.header().path().unwrap());
-  //   println!("{}", entry.header().size().unwrap());
-  // }
+  for entry in archive.entries().unwrap() {
+    let entry = entry.unwrap();
+    let header = entry.header();
+    println!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
+  }
 
   // archive.unpack("ccloader").unwrap();
 
