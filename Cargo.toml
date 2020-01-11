@@ -11,11 +11,12 @@ homepage = "https://github.com/dmitmel/ccloader-installer"
 
 [dependencies]
 dirs = "*"
-flate2 = { version = "*", default-features = false, features = ["zlib"] }
-tar = { version = "*", default-features = false }
 curl = { git = "https://github.com/dmitmel/curl-rust.git", branch = "curl-sys-static-env" }
+http = "*"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
+flate2 = { version = "*", default-features = false, features = ["zlib"] }
+tar = { version = "*", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "*"

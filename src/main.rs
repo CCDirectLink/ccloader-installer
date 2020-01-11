@@ -1,80 +1,51 @@
-use curl::easy::{Easy as Curl, List as CurlList};
 use flate2::bufread::GzDecoder;
 use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 use std::str;
 use tar::Archive;
 
+mod http_client;
 mod native_ui;
 
+use http_client::{
+  Request as HttpRequest, Response as HttpResponse, SimpleHttpClient,
+};
+
 const CCLOADER_GITHUB_API_RELEASE_URL: &str =
-  // "https://api.github.com/repos/dmitmel/CCLoader/releases/latest";
-  "http://localhost:8080/latest.json";
+  // "https://api.github.com/repos/dmitmel/CCLoader/releases/latest"
+  // "https://httpbin.org/redirect/1"
+  "http://localhost:8080/latest.json"
+  ;
 
 fn main() {
   curl::init();
   native_ui::init();
 
-  let mut client = Curl::new();
-  client.fail_on_error(true).unwrap();
-  client.follow_location(true).unwrap();
-  client
-    .useragent(&format!(
-      "{} v{} by dmitmel",
-      env!("CARGO_PKG_NAME"),
-      env!("CARGO_PKG_VERSION")
-    ))
-    .unwrap();
+  let mut client = SimpleHttpClient::new();
 
-  client.url(CCLOADER_GITHUB_API_RELEASE_URL).unwrap();
-  client
-    .http_headers({
-      let mut http_headers = CurlList::new();
-      http_headers.append("Accept: application/vnd.github.v3+json").unwrap();
-      http_headers
-    })
+  let response = client
+    .send(
+      HttpRequest::get(CCLOADER_GITHUB_API_RELEASE_URL)
+        .header("Accept", "application/vnd.github.v3+json")
+        .body(Vec::new())
+        .unwrap(),
+    )
     .unwrap();
-  let release_json_bytes = {
-    let mut body: Vec<u8> = Vec::new();
-    let mut transfer = client.transfer();
-    transfer
-      .write_function(|chunk| {
-        body.extend_from_slice(chunk);
-        Ok(chunk.len())
-      })
-      .unwrap();
-    transfer.perform().unwrap();
-    drop(transfer);
-    body
-  };
 
   let release_data: JsonValue =
-    serde_json::from_slice(&release_json_bytes).unwrap();
+    serde_json::from_slice(&response.body()).unwrap();
   let ccloader_download_url =
-    get_download_url_from_release_data(&release_data).unwrap();
+    if let Some(url) = get_download_url_from_release_data(&release_data) {
+      url
+    } else {
+      return;
+    };
   println!("{}", ccloader_download_url);
 
-  client.url(ccloader_download_url).unwrap();
-  client
-    .http_headers({
-      let mut http_headers = CurlList::new();
-      http_headers.append("Accept: */*").unwrap();
-      http_headers
-    })
+  let response = client
+    .send(HttpRequest::get(ccloader_download_url).body(Vec::new()).unwrap())
     .unwrap();
-  let compressed_archive_data = {
-    let mut body: Vec<u8> = Vec::new();
-    let mut transfer = client.transfer();
-    transfer
-      .write_function(|chunk| {
-        body.extend_from_slice(chunk);
-        Ok(chunk.len())
-      })
-      .unwrap();
-    transfer.perform().unwrap();
-    drop(transfer);
-    body
-  };
+  let compressed_archive_data = response.body();
 
   let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
   let mut archive = Archive::new(&mut decoder);
