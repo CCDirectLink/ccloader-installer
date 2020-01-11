@@ -53,6 +53,10 @@ fn is_linebreak_char(b: u8) -> bool {
   b == b'\n' || b == b'\r'
 }
 
+fn is_digit(b: u8) -> bool {
+  b'0' <= b && b <= b'9'
+}
+
 #[derive(Debug)]
 pub struct ParserHelper<'a> {
   bytes: &'a [u8],
@@ -116,16 +120,31 @@ impl<'a> ParserHelper<'a> {
 
   pub fn take_digit(&mut self) -> Option<u8> {
     self.take_map(1, |bytes| {
-      let digit: u32 = (bytes[0] as char).to_digit(10)?;
-      Some(digit as u8)
+      let digit_byte = bytes[0];
+      if is_digit(digit_byte) {
+        Some(digit_byte - b'0')
+      } else {
+        None
+      }
     })
   }
 
   pub fn take_usize(&mut self) -> Option<usize> {
-    let mut result = self.take_digit()? as usize;
-    while let Some(digit) = self.take_digit() {
-      result = result.checked_mul(10)?.checked_add(digit as usize)?;
-    }
-    Some(result)
+    ascii_to_usize(self.take_while(is_digit)?)
   }
+}
+
+pub fn ascii_to_usize(bytes: &[u8]) -> Option<usize> {
+  if bytes.is_empty() {
+    return None;
+  }
+  let mut result = 0usize;
+  for byte in bytes {
+    if !is_digit(*byte) {
+      return None;
+    }
+    let digit = byte - b'0';
+    result = result.checked_mul(10)?.checked_add(digit as usize)?;
+  }
+  Some(result)
 }

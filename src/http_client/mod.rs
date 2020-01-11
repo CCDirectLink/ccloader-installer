@@ -196,13 +196,13 @@ impl Handler {
   fn try_get_content_length(&self) -> Option<usize> {
     let headers = self.response_headers.as_ref()?;
 
-    if let Some(header_value) = headers.get(header::CONTENT_ENCODING) {
-      if header_value.as_bytes().to_ascii_lowercase() == b"chuncked" {
+    if let Some(header_value) = headers.get(header::TRANSFER_ENCODING) {
+      if header_value.as_bytes().to_ascii_lowercase() != b"identity" {
         return None;
       }
     }
 
     let header_value = headers.get(header::CONTENT_LENGTH)?;
-    parser::ParserHelper::new(header_value.as_bytes()).take_usize()
+    parser::ascii_to_usize(header_value.as_bytes())
   }
 }
