@@ -105,6 +105,7 @@ dependencies = [
  "dirs",
  "flate2",
  "http",
+ "libz-sys",
  "objc",
  "serde",
  "serde_json",
@@ -197,7 +198,7 @@ dependencies = [
 [[package]]
 name = "curl"
 version = "0.4.25"
-source = "git+https://github.com/dmitmel/curl-rust.git?branch=curl-sys-static-env#ceecc99db711b6f60441397fc5c401740c94b0b7"
+source = "git+https://github.com/alexcrichton/curl-rust.git#a6969c03b1e8f66bc4c801914327176ed38f44c5"
 dependencies = [
  "curl-sys",
  "libc",
@@ -211,7 +212,7 @@ dependencies = [
 [[package]]
 name = "curl-sys"
 version = "0.4.25"
-source = "git+https://github.com/dmitmel/curl-rust.git?branch=curl-sys-static-env#ceecc99db711b6f60441397fc5c401740c94b0b7"
+source = "git+https://github.com/alexcrichton/curl-rust.git#a6969c03b1e8f66bc4c801914327176ed38f44c5"
 dependencies = [
  "cc",
  "libc",

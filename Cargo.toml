@@ -11,7 +11,8 @@ homepage = "https://github.com/dmitmel/ccloader-installer"
 
 [dependencies]
 dirs = "*"
-curl = { git = "https://github.com/dmitmel/curl-rust.git", branch = "curl-sys-static-env" }
+curl = { git = "https://github.com/alexcrichton/curl-rust.git" }
+libz-sys = "*"  # dependency needed just for enabling static linking with libz
 http = "*"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
@@ -21,3 +22,8 @@ tar = { version = "*", default-features = false }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "*"
 cocoa = "*"
+
+[features]
+static-curl = ["curl/static-curl"]
+static-libz = ["libz-sys/static"]
+static = ["static-curl", "static-libz"]
