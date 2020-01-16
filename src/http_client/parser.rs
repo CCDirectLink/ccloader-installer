@@ -1,3 +1,4 @@
+use crate::ascii_to_int::ascii_to_int;
 use http::header::{HeaderName, HeaderValue};
 use http::{StatusCode, Version};
 
@@ -130,21 +131,6 @@ impl<'a> ParserHelper<'a> {
   }
 
   pub fn take_usize(&mut self) -> Option<usize> {
-    ascii_to_usize(self.take_while(is_digit)?)
+    ascii_to_int(self.take_while(is_digit)?)
   }
-}
-
-pub fn ascii_to_usize(bytes: &[u8]) -> Option<usize> {
-  if bytes.is_empty() {
-    return None;
-  }
-  let mut result = 0usize;
-  for byte in bytes {
-    if !is_digit(*byte) {
-      return None;
-    }
-    let digit = byte - b'0';
-    result = result.checked_mul(10)?.checked_add(digit as usize)?;
-  }
-  Some(result)
 }

@@ -2,26 +2,27 @@ use ::curl::easy as curl;
 use ::curl::Error as CurlError;
 
 pub use http::header::{self, HeaderMap, HeaderName, HeaderValue};
-pub use http::{Method, Request, Response, StatusCode, Version};
+pub use http::{Method, StatusCode, Uri, Version};
+
+use crate::ascii_to_int::ascii_to_int;
 
 mod parser;
 
 pub type Body = Vec<u8>;
+pub type Request<T = Body> = http::Request<T>;
+pub type Response<T = Body> = http::Response<T>;
 
 #[derive(Debug)]
-pub struct SimpleHttpClient {
+pub struct HttpClient {
   curl: curl::Easy2<Handler>,
 }
 
-impl SimpleHttpClient {
+impl HttpClient {
   pub fn new() -> Self {
-    Self { curl: curl::Easy2::new(Handler::new()) }
+    HttpClient { curl: curl::Easy2::new(Handler::new()) }
   }
 
-  pub fn send(
-    &mut self,
-    request: Request<Body>,
-  ) -> Result<Response<Body>, CurlError> {
+  pub fn send(&mut self, request: Request) -> Result<Response, CurlError> {
     println!("{:?}", request);
 
     self.curl.reset();
@@ -48,14 +49,12 @@ impl SimpleHttpClient {
       } as u16)
       .unwrap();
 
-    println!("{:?}", response.body().capacity());
-
     Ok(response)
   }
 
   fn configure_curl_default(&mut self) -> Result<(), CurlError> {
     self.curl.follow_location(true)?;
-    self.curl.fail_on_error(true)?;
+    // self.curl.fail_on_error(true)?;
     self.curl.useragent(&format!(
       "{}/{} (by @dmitmel)",
       env!("CARGO_PKG_NAME"),
@@ -66,7 +65,7 @@ impl SimpleHttpClient {
 
   fn configure_curl_for_request(
     &mut self,
-    request: &Request<Body>,
+    request: &Request,
   ) -> Result<(), CurlError> {
     // taken from https://github.com/sagebind/isahc/blob/9909eda428bd87e8dbad7a0edba4b532b519c6a7/src/client.rs#L758-L890
 
@@ -162,6 +161,8 @@ impl Handler {
 
 impl curl::Handler for Handler {
   fn header(&mut self, data: &[u8]) -> bool {
+    println!("{:?}", String::from_utf8_lossy(data));
+
     // this part was influenced by https://github.com/sagebind/isahc/blob/969b0800b5ab9119e2f72532a7522247bc639c2f/src/handler.rs
 
     if let Some((version, status_code)) = parser::parse_status_line(data) {
@@ -203,6 +204,7 @@ impl Handler {
     }
 
     let header_value = headers.get(header::CONTENT_LENGTH)?;
-    parser::ascii_to_usize(header_value.as_bytes())
+    println!("{:?}", header_value);
+    ascii_to_int(header_value.as_bytes())
   }
 }
