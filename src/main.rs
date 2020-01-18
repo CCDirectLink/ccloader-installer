@@ -15,13 +15,14 @@ mod native_ui;
 
 use error::{Error as AppError, Result as AppResult, ResultExt};
 use http_client::{
-  HttpClient, Request as HttpRequest, Response as HttpResponse, StatusCode, Uri,
+  Body, HttpClient, Request as HttpRequest, Response as HttpResponse,
+  StatusCode, Uri,
 };
 
 const CCLOADER_GITHUB_API_RELEASE_URL: &str =
-  // "https://api.github.com/repos/dmitmel/CCLoader/releases/latest"
+  "https://api.github.com/repos/dmitmel/CCLoader/releases/latest"
   // "https://httpbin.org/redirect/1"
-  "http://localhost:8080/latest.json"
+  // "http://localhost:8080/latest.json"
   ;
 
 const BUG_REPORT_TEXT: &str =
@@ -31,43 +32,32 @@ fn main() {
   curl::init();
   native_ui::init();
 
+  if let Err(error) = try_run() {
+    println!("ERROR: {}", error);
+    native_ui::show_alert(native_ui::AlertConfig {
+      style: native_ui::AlertStyle::Problem,
+      title: error,
+      description: Some(BUG_REPORT_TEXT.to_owned()),
+      primary_button_text: "OK".to_owned(),
+      secondary_button_text: None,
+    });
+  }
+}
+
+fn try_run() -> AppResult<()> {
   let mut client = HttpClient::new();
 
-  let ccloader_download_url =
-    match fetch_latest_release_download_url(&mut client) {
-      Ok(url) => url,
-      Err(error) => {
-        native_ui::show_alert(native_ui::AlertConfig {
-          style: native_ui::AlertStyle::Problem,
-          title: format!(
-            "Couldn't fetch the latest release information: {}",
-            error
-          ),
-          description: Some(BUG_REPORT_TEXT.to_owned()),
-          primary_button_text: "OK".to_owned(),
-          secondary_button_text: None,
-        });
-        return;
-      }
-    };
-  println!("{}", ccloader_download_url);
+  let ccloader_download_url = fetch_latest_release_download_url(&mut client)
+    .context("Couldn't fetch the latest release information")?;
 
-  let response = client
-    .send(HttpRequest::get(ccloader_download_url).body(Vec::new()).unwrap())
-    .unwrap();
-  let compressed_archive_data = response.body();
+  println!("release URL = {}", ccloader_download_url);
 
-  let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
-  let mut archive = Archive::new(&mut decoder);
-  archive.set_preserve_permissions(true);
+  let compressed_archive_data =
+    download_release_archive(&mut client, ccloader_download_url)
+      .context("Couldn't donwload the latest CCLoader release")?;
 
-  for entry in archive.entries().unwrap() {
-    let entry = entry.unwrap();
-    let header = entry.header();
-    println!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
-  }
-
-  // archive.unpack("ccloader").unwrap();
+  unpack_release_archive(compressed_archive_data)
+    .context("Couldn't unpack the CCLoader release archive")?;
 
   // let alert_response =
   //   native_ui::show_alert(native_ui::AlertConfig {
@@ -111,6 +101,8 @@ fn main() {
   //     }
   //   }
   // }
+
+  Ok(())
 }
 
 fn autodetect_game_location() -> Option<PathBuf> {
@@ -231,4 +223,39 @@ fn get_download_url_from_release_data(release: &JsonValue) -> Option<&str> {
   })?;
   let url: &str = ccloader_asset["browser_download_url"].as_str()?;
   Some(url)
+}
+
+fn download_release_archive(
+  client: &mut HttpClient,
+  download_url: Uri,
+) -> AppResult<Body> {
+  let response = client
+    .send(HttpRequest::get(download_url).body(Vec::new()).unwrap())
+    .context("network error")?;
+
+  let status = response.status();
+  if !status.is_success() {
+    return Err(format!("HTTP error: {}", status));
+  }
+
+  Ok(response.into_body())
+}
+
+fn unpack_release_archive(compressed_archive_data: Vec<u8>) -> AppResult<()> {
+  let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
+  let mut archive = Archive::new(&mut decoder);
+  archive.set_preserve_permissions(true);
+
+  for entry in archive.entries().context("archive error")? {
+    if let Err(err) = entry.as_ref() {
+      eprintln!("{:?}", err);
+    }
+    let entry = entry.context("I/O error")?;
+    let header = entry.header();
+    println!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
+  }
+
+  // archive.unpack("ccloader").unwrap();
+
+  Ok(())
 }

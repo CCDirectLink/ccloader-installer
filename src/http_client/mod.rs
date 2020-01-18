@@ -123,10 +123,7 @@ impl HttpClient {
     self.curl.http_headers(headers)?;
 
     if has_body {
-      let len = request
-        .headers()
-        .get(header::CONTENT_LENGTH)
-        .and_then(|value| value.to_str().unwrap().parse().ok())
+      let len = try_get_content_length_from_headers(request.headers())
         .unwrap_or(body_length);
 
       if request.method() == Method::POST {
@@ -161,8 +158,6 @@ impl Handler {
 
 impl curl::Handler for Handler {
   fn header(&mut self, data: &[u8]) -> bool {
-    println!("{:?}", String::from_utf8_lossy(data));
-
     // this part was influenced by https://github.com/sagebind/isahc/blob/969b0800b5ab9119e2f72532a7522247bc639c2f/src/handler.rs
 
     if let Some((version, status_code)) = parser::parse_status_line(data) {
@@ -181,30 +176,28 @@ impl curl::Handler for Handler {
     true
   }
 
-  fn write(&mut self, data: &[u8]) -> Result<usize, curl::WriteError> {
+  fn write(&mut self, chunk: &[u8]) -> Result<usize, curl::WriteError> {
     if self.response_body.is_none() {
-      self.response_body = Some(Vec::with_capacity(
-        self.try_get_content_length().unwrap_or_else(|| data.len()),
-      ));
+      if let Some(headers) = self.response_headers.as_ref() {
+        self.response_body = Some(Vec::with_capacity(
+          try_get_content_length_from_headers(headers)
+            .unwrap_or_else(|| chunk.len()),
+        ));
+      }
     }
     let response_body = self.response_body.as_mut().unwrap();
-    response_body.extend_from_slice(data);
-    Ok(data.len())
+    response_body.extend_from_slice(chunk);
+    Ok(chunk.len())
   }
 }
 
-impl Handler {
-  fn try_get_content_length(&self) -> Option<usize> {
-    let headers = self.response_headers.as_ref()?;
-
-    if let Some(header_value) = headers.get(header::TRANSFER_ENCODING) {
-      if header_value.as_bytes().to_ascii_lowercase() != b"identity" {
-        return None;
-      }
+fn try_get_content_length_from_headers(headers: &HeaderMap) -> Option<usize> {
+  if let Some(header_value) = headers.get(header::TRANSFER_ENCODING) {
+    if header_value.as_bytes().to_ascii_lowercase() != b"identity" {
+      return None;
     }
-
-    let header_value = headers.get(header::CONTENT_LENGTH)?;
-    println!("{:?}", header_value);
-    ascii_to_int(header_value.as_bytes())
   }
+
+  let header_value = headers.get(header::CONTENT_LENGTH)?;
+  ascii_to_int(header_value.as_bytes())
 }
