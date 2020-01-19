@@ -26,16 +26,13 @@ use http_client::{
 };
 
 const CCLOADER_GITHUB_API_RELEASE_URL: &str =
-  "https://api.github.com/repos/dmitmel/CCLoader/releases/latest"
-  // "https://httpbin.org/redirect/1"
-  // "http://localhost:8080/latest.json"
-  ;
+  "https://api.github.com/repos/dmitmel/CCLoader/releases/latest";
 
 const BUG_REPORT_TEXT: &str =
-  "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server";
+  "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server. Bugs can be reported at https://github.com/dmitmel/ccloader-installer/issues";
 
-const CCLOADER_DIR_NAME_IN_ASSETS: &str = "ccloader";
-const MODS_DIR_NAME_IN_ASSETS: &str = "assets/mods";
+const CCLOADER_DIR_PATH: &str = "ccloader";
+const MODS_DIR_PATH: &str = "assets/mods";
 
 fn main() {
   curl::init();
@@ -109,18 +106,19 @@ fn main() {
 fn try_run() -> AppResult<()> {
   let mut client = HttpClient::new();
 
-  let assets_dir = match ask_for_assets_dir() {
+  let game_data_dir = match ask_for_game_data_dir() {
     Some(p) => p,
     None => return Ok(()),
   };
-  info!("assets dir = {}", assets_dir.display());
+  info!("game data dir = {}", game_data_dir.display());
 
-  let ccloader_dir = assets_dir.join(CCLOADER_DIR_NAME_IN_ASSETS);
+  let ccloader_dir = game_data_dir.join(CCLOADER_DIR_PATH);
   if ccloader_dir.is_dir() {
-    bail!("The assets directory already contains a CCLoader installation (updating CCLoader isn't supported yet)")
+    bail!("The game data directory already contains a CCLoader installation (updating CCLoader isn't supported yet)")
   }
 
-  let user_wants_to_continue = ask_for_installation_confirmation(&assets_dir);
+  let user_wants_to_continue =
+    ask_for_installation_confirmation(&game_data_dir);
   if !user_wants_to_continue {
     return Ok(());
   }
@@ -137,10 +135,10 @@ fn try_run() -> AppResult<()> {
   unpack_release_archive(compressed_archive_data, &ccloader_dir)
     .context("Couldn't unpack the CCLoader release archive")?;
 
-  patch_crosscode_assets(&assets_dir)
+  patch_crosscode_assets(&game_data_dir)
     .context("Couldn't patch CrossCode assets")?;
 
-  let mods_dir = assets_dir.join(MODS_DIR_NAME_IN_ASSETS);
+  let mods_dir = game_data_dir.join(MODS_DIR_PATH);
   setup_mods_dir(&mods_dir, &ccloader_dir)
     .context("Couldn't setup the mods directory")?;
 
@@ -151,18 +149,18 @@ fn try_run() -> AppResult<()> {
   Ok(())
 }
 
-fn ask_for_assets_dir() -> Option<PathBuf> {
+fn ask_for_game_data_dir() -> Option<PathBuf> {
   use native_ui::*;
 
   let try_to_autodetect = match show_alert(AlertConfig {
     style: AlertStyle::Info,
     title: "Welcome to CCLoader installer".to_owned(),
     description: Some(
-      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode assets directory."
+      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory."
         .to_owned(),
     ),
     primary_button_text: "Try to autodetect CC".to_owned(),
-    secondary_button_text: Some("Specify the assets path manually".to_owned()),
+    secondary_button_text: Some("Specify the game data path manually".to_owned()),
   }) {
     Some(AlertResponse::PrimaryButtonPressed) => true,
     None => return None,
@@ -170,16 +168,17 @@ fn ask_for_assets_dir() -> Option<PathBuf> {
   };
 
   if try_to_autodetect {
-    info!("trying to autodetect the assets directory");
-    if let Some(p) = autodetect_assets_dir() {
+    info!("trying to autodetect the game data directory");
+    if let Some(p) = autodetect_game_data_dir() {
       return Some(p);
     } else {
       info!("autodetection failed");
       match show_alert(AlertConfig {
         style: AlertStyle::Problem,
-        title: "Couldn't autodetect your CrossCode assets directory".to_owned(),
+        title: "Couldn't autodetect your CrossCode game data directory"
+          .to_owned(),
         description: None,
-        primary_button_text: "Specify the assets path manually".to_owned(),
+        primary_button_text: "Specify the game data path manually".to_owned(),
         secondary_button_text: Some("Exit".to_owned()),
       }) {
         Some(AlertResponse::PrimaryButtonPressed) => {}
@@ -189,16 +188,16 @@ fn ask_for_assets_dir() -> Option<PathBuf> {
   }
 
   while let Some(path) = {
-    info!("specifying path to the assets directory manually");
+    info!("specifying path to the game data directory manually");
     open_pick_folder_dialog()
   } {
-    if is_assets_dir(&path) {
+    if is_game_data_dir(&path) {
       return Some(path);
     } else {
       match show_alert(AlertConfig {
         style: AlertStyle::Problem,
         title:
-          "Couldn't detect a CrossCode assets directory here. Please, try again."
+          "Couldn't detect a CrossCode game data directory here. Please, try again."
             .to_owned(),
         description: None,
         primary_button_text: "Specify path to CC manually".to_owned(),
@@ -213,11 +212,11 @@ fn ask_for_assets_dir() -> Option<PathBuf> {
   None
 }
 
-fn autodetect_assets_dir() -> Option<PathBuf> {
-  possible_assets_locations().into_iter().find(|path| is_assets_dir(path))
+fn autodetect_game_data_dir() -> Option<PathBuf> {
+  possible_game_data_locations().into_iter().find(|path| is_game_data_dir(path))
 }
 
-fn is_assets_dir(path: &Path) -> bool {
+fn is_game_data_dir(path: &Path) -> bool {
   info!("checking {}", path.display());
   path.is_dir()
     && path.join("package.json").is_file()
@@ -226,7 +225,7 @@ fn is_assets_dir(path: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn get_possible_assets_locations() -> Vec<PathBuf> {
+fn get_possible_game_data_locations() -> Vec<PathBuf> {
   let mut result = Vec::with_capacity(1);
   if let Some(home) = dirs::home_dir() {
     result.push(home.join(".steam/steam/steamapps/common/CrossCode"));
@@ -235,7 +234,7 @@ fn get_possible_assets_locations() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
-fn possible_assets_locations() -> Vec<PathBuf> {
+fn possible_game_data_locations() -> Vec<PathBuf> {
   let mut result = Vec::with_capacity(1);
   if let Some(home) = dirs::home_dir() {
     result.push(home.join(
@@ -246,7 +245,7 @@ fn possible_assets_locations() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_possible_assets_locations() -> Vec<PathBuf> {
+fn get_possible_game_data_locations() -> Vec<PathBuf> {
   let mut result = vec![
     PathBuf::from("C:\\Program Files/Steam/steamapps/common/CrossCode"),
     PathBuf::from("C:\\Program Files (x86)/Steam/steamapps/common/CrossCode"),
@@ -254,7 +253,7 @@ fn get_possible_assets_locations() -> Vec<PathBuf> {
   result
 }
 
-fn ask_for_installation_confirmation(assets_dir: &Path) -> bool {
+fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
   use native_ui::*;
 
   show_alert(AlertConfig {
@@ -263,8 +262,8 @@ fn ask_for_installation_confirmation(assets_dir: &Path) -> bool {
       "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue?"
         .to_owned(),
     description: Some(format!(
-      "Path to the assets directory is {}",
-      assets_dir.display()
+      "Path to the game data directory is {}",
+      game_data_dir.display()
     )),
     primary_button_text: "Yes".to_owned(),
     secondary_button_text: Some("No, exit".to_owned()),
@@ -382,11 +381,11 @@ fn unpack_release_archive(
   Ok(())
 }
 
-fn patch_crosscode_assets(assets_dir: &Path) -> AppResult<()> {
+fn patch_crosscode_assets(game_data_dir: &Path) -> AppResult<()> {
   use std::fs::{File, OpenOptions};
   use std::io::{Seek, SeekFrom};
 
-  let package_json_path = assets_dir.join("package.json");
+  let package_json_path = game_data_dir.join("package.json");
   info!("patching {}", package_json_path.display());
 
   let mut package_json_file: File = OpenOptions::new()
@@ -404,7 +403,7 @@ fn patch_crosscode_assets(assets_dir: &Path) -> AppResult<()> {
   }
 
   package_json_data["main"] =
-    JsonValue::String(format!("{}/index.html", CCLOADER_DIR_NAME_IN_ASSETS));
+    JsonValue::String(format!("{}/index.html", CCLOADER_DIR_PATH));
 
   // truncate the file, then overwrite it with the patched data
 
