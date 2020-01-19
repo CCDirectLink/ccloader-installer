@@ -7,6 +7,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
+name = "arc-swap"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc4662175ead9cd84451d5c35070517777949a2ed84551764129cedb88384841"
+
+[[package]]
 name = "arrayref"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -106,10 +112,13 @@ dependencies = [
  "flate2",
  "http",
  "libz-sys",
+ "log",
+ "log4rs",
  "objc",
  "serde",
  "serde_json",
  "tar",
+ "time",
 ]
 
 [[package]]
@@ -361,6 +370,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "log"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
+name = "log4rs"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e229f32d17a1a822df4bb22ffdf1c7449d0ece700f310e87254a297be31c3b63"
+dependencies = [
+ "arc-swap",
+ "fnv",
+ "libc",
+ "log",
+ "winapi",
+]
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -594,6 +625,17 @@ dependencies = [
  "filetime",
  "libc",
  "redox_syscall",
+]
+
+[[package]]
+name = "time"
+version = "0.1.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db8dcfca086c1143c9270ac42a2bbd8a7ee477b78ac8e45b19abfb0cbede4b6f"
+dependencies = [
+ "libc",
+ "redox_syscall",
+ "winapi",
 ]
 
 [[package]]

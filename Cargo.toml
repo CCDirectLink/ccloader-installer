@@ -10,6 +10,9 @@ repository = "https://github.com/dmitmel/ccloader-installer.git"
 homepage = "https://github.com/dmitmel/ccloader-installer"
 
 [dependencies]
+log = "*"
+log4rs = { version = "*", default-features = false, features = ["ansi_writer", "console_writer", "simple_writer"] }
+time = "^0.1"
 dirs = "*"
 curl = { git = "https://github.com/alexcrichton/curl-rust.git" }
 libz-sys = "*"  # dependency needed just for enabling static linking with libz

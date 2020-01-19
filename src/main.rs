@@ -4,12 +4,16 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use log::{debug, error, info, trace, warn, LevelFilter};
+use log4rs::config::{Appender, Config, Root};
+
 use flate2::bufread::GzDecoder;
 use serde_json::Value as JsonValue;
 use tar::Archive;
 
 mod ascii_to_int;
 mod error;
+mod fancy_logger;
 mod http_client;
 mod native_ui;
 
@@ -32,8 +36,49 @@ fn main() {
   curl::init();
   native_ui::init();
 
+  let log_file_name = format!("{}.log", env!("CARGO_PKG_NAME"));
+  let log_file_path: PathBuf = match fancy_logger::logs_directory() {
+    Some(logs_dir) => logs_dir.join(log_file_name),
+    None => PathBuf::from(log_file_name),
+  };
+
+  let config = Config::builder()
+    .appender(Appender::builder().build(
+      "console",
+      Box::new(fancy_logger::ConsoleAppender::new(Box::new(
+        fancy_logger::Encoder,
+      ))),
+    ))
+    .appender(
+      Appender::builder().build(
+        "file",
+        Box::new(
+          fancy_logger::FileAppender::new(
+            &log_file_path,
+            Box::new(fancy_logger::Encoder),
+          )
+          .unwrap(),
+        ),
+      ),
+    )
+    .build(
+      Root::builder()
+        .appender("console")
+        .appender("file")
+        .build(LevelFilter::Info),
+    )
+    .unwrap();
+
+  log4rs::init_config(config).unwrap();
+
+  error!("ERROR");
+  warn!("ERROR");
+  info!("HELLO");
+  debug!("HELLO");
+  trace!("HELLO");
+
   if let Err(error) = try_run() {
-    println!("ERROR: {}", error);
+    error!("{}", error);
     native_ui::show_alert(native_ui::AlertConfig {
       style: native_ui::AlertStyle::Problem,
       title: error,
@@ -41,6 +86,7 @@ fn main() {
       primary_button_text: "OK".to_owned(),
       secondary_button_text: None,
     });
+    std::process::exit(1);
   }
 }
 
@@ -50,7 +96,7 @@ fn try_run() -> AppResult<()> {
   let ccloader_download_url = fetch_latest_release_download_url(&mut client)
     .context("Couldn't fetch the latest release information")?;
 
-  println!("release URL = {}", ccloader_download_url);
+  info!("release URL = {}", ccloader_download_url);
 
   let compressed_archive_data =
     download_release_archive(&mut client, ccloader_download_url)
@@ -107,7 +153,7 @@ fn try_run() -> AppResult<()> {
 
 fn autodetect_game_location() -> Option<PathBuf> {
   get_possible_game_locations().into_iter().find(|path| {
-    eprintln!("checking {}", path.display());
+    info!("checking {}", path.display());
     is_game_installed_in(path)
   })
 }
@@ -162,7 +208,7 @@ fn fetch_latest_release_download_url(
 
   let status = response.status();
 
-  println!("{}", String::from_utf8_lossy(&response.body()));
+  info!("{}", String::from_utf8_lossy(&response.body()));
 
   if status == StatusCode::FORBIDDEN {
     // try to provide a more useful error message in case of ratelimits
@@ -248,11 +294,11 @@ fn unpack_release_archive(compressed_archive_data: Vec<u8>) -> AppResult<()> {
 
   for entry in archive.entries().context("archive error")? {
     if let Err(err) = entry.as_ref() {
-      eprintln!("{:?}", err);
+      error!("{:?}", err);
     }
     let entry = entry.context("I/O error")?;
     let header = entry.header();
-    println!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
+    // info!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
   }
 
   // archive.unpack("ccloader").unwrap();

@@ -1,5 +1,6 @@
 use ::curl::easy as curl;
 use ::curl::Error as CurlError;
+use log::info;
 
 pub use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 pub use http::{Method, StatusCode, Uri, Version};
@@ -23,7 +24,7 @@ impl HttpClient {
   }
 
   pub fn send(&mut self, request: Request) -> Result<Response, CurlError> {
-    println!("{:?}", request);
+    info!("{:?}", request);
 
     self.curl.reset();
     self.configure_curl_default()?;
