@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use log::{debug, error, info, trace, warn, LevelFilter};
+use log::{error, info, LevelFilter};
 use log4rs::config::{Appender, Config, Root};
 
 use flate2::bufread::GzDecoder;
@@ -17,7 +17,7 @@ mod fancy_logger;
 mod http_client;
 mod native_ui;
 
-use error::{Error as AppError, Result as AppResult, ResultExt};
+use error::{Result as AppResult, ResultExt};
 use http_client::{
   Body, HttpClient, Request as HttpRequest, Response as HttpResponse,
   StatusCode, Uri,
@@ -74,7 +74,7 @@ fn main() {
       }
       Err(e) => {
         eprintln!(
-          "couldn't open log file '{}': {}",
+          "couldn't open log file '{}' (continuing anyway): {}",
           log_file_path.display(),
           e
         );
@@ -86,6 +86,8 @@ fn main() {
   // logger initialization can't fail because the only error which can occur
   // happens if you try to set the logger twice
   .unwrap();
+
+  fancy_logger::set_panic_hook();
 
   if let Err(error) = try_run() {
     error!("{}", error);

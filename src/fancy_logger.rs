@@ -1,6 +1,6 @@
 use encode::writer::console::ConsoleWriter;
 use encode::writer::simple::SimpleWriter;
-use log::{Level, Record};
+use log::{error, Level, Record};
 use log4rs::append::Append;
 use log4rs::encode::{self, Color, Encode, Style};
 use std::error::Error;
@@ -23,6 +23,42 @@ pub fn logs_directory() -> Option<PathBuf> {
 #[cfg(not(target_os = "macos"))]
 pub fn logs_directory() -> Option<PathBuf> {
   dirs::data_local_dir()
+}
+
+pub fn set_panic_hook() {
+  std::panic::set_hook(Box::new(|info| {
+    let backtrace = backtrace::Backtrace::new();
+
+    let thread = std::thread::current();
+    let thread_name = thread.name().unwrap_or("<unnamed>");
+
+    let msg = match info.payload().downcast_ref::<&'static str>() {
+      Some(s) => *s,
+      None => match info.payload().downcast_ref::<String>() {
+        Some(s) => &**s,
+        None => "Box<Any>",
+      },
+    };
+
+    match info.location() {
+      Some(location) => {
+        error!(
+            target: "panic", "thread '{}' panicked at '{}', {}\n{:?}",
+            thread_name,
+            msg,
+            location,
+            backtrace
+        );
+      }
+      None => error!(
+          target: "panic",
+          "thread '{}' panicked at '{}'\n{:?}",
+          thread_name,
+          msg,
+          backtrace
+      ),
+    }
+  }));
 }
 
 // ConsoleAppender has been partially taken from https://github.com/estk/log4rs/blob/c0a92f88eaf36e6bf59446fca1eaadeb6d2a578e/src/append/console.rs
