@@ -105,6 +105,17 @@ fn main() {
 fn try_run() -> AppResult<()> {
   let mut client = HttpClient::new();
 
+  let assets_dir = match ask_for_assets_dir() {
+    Some(p) => p,
+    None => return Ok(()),
+  };
+  info!("assets dir = {}", assets_dir.display());
+
+  let user_wants_to_continue = ask_for_installation_confirmation(&assets_dir);
+  if !user_wants_to_continue {
+    return Ok(());
+  }
+
   let ccloader_download_url = fetch_latest_release_download_url(&mut client)
     .context("Couldn't fetch the latest release information")?;
 
@@ -117,60 +128,94 @@ fn try_run() -> AppResult<()> {
   unpack_release_archive(compressed_archive_data)
     .context("Couldn't unpack the CCLoader release archive")?;
 
-  // let alert_response =
-  //   native_ui::show_alert(native_ui::AlertConfig {
-  //     style: native_ui::AlertStyle::Info,
-  //     title: "Welcome to CC Mod Manager Launcher".to_owned(),
-  //     description: Some("This program starts CC Mod Manager by reusing nw.js bundled with CrossCode. However, it first needs to locate your CrossCode installation.".to_owned()),
-  //     primary_button_text: "Try to autodetect CC".to_owned(),
-  //     secondary_button_text: Some("Specify path to CC manually".to_owned()),
-  //   });
-  // if alert_response == None {
-  //   return;
-  // };
-
-  // let try_to_autodetect =
-  //   alert_response == Some(native_ui::AlertResponse::PrimaryButtonPressed);
-
-  // if try_to_autodetect {
-  //   eprintln!("trying to autodetect CrossCode installation path");
-  //   if let Some(game_path) = autodetect_game_location() {
-  //     eprintln!("{:?}", game_path);
-  //   }
-  // }
-
-  // while let Some(path) = native_ui::open_pick_folder_dialog() {
-  //   if is_game_installed_in(&path) {
-  //     println!("{}", path.display());
-  //     break;
-  //   } else {
-  //     let alert_response = native_ui::show_alert(native_ui::AlertConfig {
-  //       style: native_ui::AlertStyle::Problem,
-  //       title:
-  //         "Couldn't detect a CrossCode installation here. Please, try again."
-  //           .to_owned(),
-  //       description: None,
-  //       primary_button_text: "Specify path to CC manually".to_owned(),
-  //       secondary_button_text: Some("Exit".to_owned()),
-  //     });
-  //     if alert_response != Some(native_ui::AlertResponse::PrimaryButtonPressed)
-  //     {
-  //       break;
-  //     }
-  //   }
-  // }
-
   Ok(())
 }
 
-fn autodetect_game_location() -> Option<PathBuf> {
-  get_possible_game_locations().into_iter().find(|path| {
-    info!("checking {}", path.display());
-    is_game_installed_in(path)
-  })
+fn ask_for_assets_dir() -> Option<PathBuf> {
+  use native_ui::*;
+
+  let try_to_autodetect = match show_alert(AlertConfig {
+    style: AlertStyle::Info,
+    title: "Welcome to CCLoader installer".to_owned(),
+    description: Some(
+      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode assets directory."
+        .to_owned(),
+    ),
+    primary_button_text: "Try to autodetect CC".to_owned(),
+    secondary_button_text: Some("Specify the assets path manually".to_owned()),
+  }) {
+    Some(AlertResponse::PrimaryButtonPressed) => true,
+    None => return None,
+    _ => false,
+  };
+
+  if try_to_autodetect {
+    info!("trying to autodetect the assets directory");
+    if let Some(p) = autodetect_assets_dir() {
+      return Some(p);
+    } else {
+      info!("autodetection failed");
+      match show_alert(AlertConfig {
+        style: AlertStyle::Problem,
+        title: "Couldn't autodetect your CrossCode assets directory".to_owned(),
+        description: None,
+        primary_button_text: "Specify the assets path manually".to_owned(),
+        secondary_button_text: Some("Exit".to_owned()),
+      }) {
+        Some(AlertResponse::PrimaryButtonPressed) => {}
+        _ => return None,
+      }
+    }
+  }
+
+  while let Some(path) = {
+    info!("specifying path to the assets directory manually");
+    open_pick_folder_dialog()
+  } {
+    if is_assets_dir(&path) {
+      return Some(path);
+    } else {
+      match show_alert(AlertConfig {
+        style: AlertStyle::Problem,
+        title:
+          "Couldn't detect a CrossCode assets directory here. Please, try again."
+            .to_owned(),
+        description: None,
+        primary_button_text: "Specify path to CC manually".to_owned(),
+        secondary_button_text: Some("Exit".to_owned()),
+      }) {
+        Some(AlertResponse::PrimaryButtonPressed) => {}
+        _ => break,
+      }
+    }
+  }
+
+  None
 }
 
-fn is_game_installed_in(path: &Path) -> bool {
+fn ask_for_installation_confirmation(assets_dir: &Path) -> bool {
+  use native_ui::*;
+
+  show_alert(AlertConfig {
+    style: AlertStyle::Info,
+    title:
+      "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue?"
+        .to_owned(),
+    description: Some(format!(
+      "Path to the assets directory is {}",
+      assets_dir.display()
+    )),
+    primary_button_text: "Yes".to_owned(),
+    secondary_button_text: Some("No, exit".to_owned()),
+  }) == Some(AlertResponse::PrimaryButtonPressed)
+}
+
+fn autodetect_assets_dir() -> Option<PathBuf> {
+  possible_assets_locations().into_iter().find(|path| is_assets_dir(path))
+}
+
+fn is_assets_dir(path: &Path) -> bool {
+  info!("checking {}", path.display());
   path.is_dir()
     && path.join("package.json").is_file()
     && path.join("assets").is_dir()
@@ -178,7 +223,7 @@ fn is_game_installed_in(path: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn get_possible_game_locations() -> Vec<PathBuf> {
+fn get_possible_assets_locations() -> Vec<PathBuf> {
   let mut result = Vec::with_capacity(1);
   if let Some(home) = dirs::home_dir() {
     result.push(home.join(".steam/steam/steamapps/common/CrossCode"));
@@ -187,7 +232,7 @@ fn get_possible_game_locations() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
-fn get_possible_game_locations() -> Vec<PathBuf> {
+fn possible_assets_locations() -> Vec<PathBuf> {
   let mut result = Vec::with_capacity(1);
   if let Some(home) = dirs::home_dir() {
     result.push(home.join(
@@ -198,7 +243,7 @@ fn get_possible_game_locations() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_possible_game_locations() -> Vec<PathBuf> {
+fn get_possible_assets_locations() -> Vec<PathBuf> {
   let mut result = vec![
     PathBuf::from("C:\\Program Files/Steam/steamapps/common/CrossCode"),
     PathBuf::from("C:\\Program Files (x86)/Steam/steamapps/common/CrossCode"),
@@ -310,7 +355,7 @@ fn unpack_release_archive(compressed_archive_data: Vec<u8>) -> AppResult<()> {
     }
     let entry = entry.context("I/O error")?;
     let header = entry.header();
-    // info!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
+    info!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
   }
 
   // archive.unpack("ccloader").unwrap();
