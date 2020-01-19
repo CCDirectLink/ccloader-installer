@@ -5,7 +5,7 @@ use std::ffi::CStr;
 use std::ffi::OsString;
 use std::os::raw::c_char;
 use std::os::unix::ffi::OsStringExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use cocoa::appkit::{
   NSApplication, NSApplicationActivateIgnoringOtherApps,
@@ -134,5 +134,22 @@ pub fn open_pick_folder_dialog() -> Option<PathBuf> {
     pool.drain();
 
     result
+  }
+}
+
+pub fn open_path(path: &Path) {
+  unsafe {
+    let pool = NSAutoreleasePool::new(nil);
+
+    let shared_workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+    let ns_string: id = NSString::alloc(nil).init_str(
+      // all paths on macOS must be valid Unicode (at least from my tests), so
+      // I assume that the Path object here is UTF-8 encoded after converting
+      // it from NSString to a Rust's UTF-8 string
+      path.to_str().unwrap(),
+    );
+    let _: () = msg_send![shared_workspace, openFile: ns_string];
+
+    pool.drain();
   }
 }

@@ -19,7 +19,7 @@ mod fancy_logger;
 mod http_client;
 mod native_ui;
 
-use error::{err_msg, Error as AppError, Result as AppResult, ResultExt};
+use error::{Result as AppResult, ResultExt};
 use http_client::{
   Body, HttpClient, Request as HttpRequest, Response as HttpResponse,
   StatusCode, Uri,
@@ -35,6 +35,7 @@ const BUG_REPORT_TEXT: &str =
   "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server";
 
 const CCLOADER_DIR_NAME_IN_ASSETS: &str = "ccloader";
+const MODS_DIR_NAME_IN_ASSETS: &str = "assets/mods";
 
 fn main() {
   curl::init();
@@ -94,21 +95,15 @@ fn main() {
   fancy_logger::set_panic_hook();
 
   if let Err(error) = try_run() {
-    show_error(&error, BUG_REPORT_TEXT);
+    error!("{}", error);
+    native_ui::show_alert(native_ui::AlertConfig {
+      style: native_ui::AlertStyle::Problem,
+      title: error,
+      description: Some(BUG_REPORT_TEXT.to_owned()),
+      primary_button_text: "OK".to_owned(),
+      secondary_button_text: None,
+    });
   }
-}
-
-#[allow(clippy::ptr_arg)]
-fn show_error(error: &AppError, additional_description: &str) {
-  error!("{}\n{}", error, additional_description);
-  native_ui::show_alert(native_ui::AlertConfig {
-    style: native_ui::AlertStyle::Problem,
-    title: error.to_owned(),
-    description: Some(additional_description.to_owned()),
-    primary_button_text: "OK".to_owned(),
-    secondary_button_text: None,
-  });
-  std::process::exit(1);
 }
 
 fn try_run() -> AppResult<()> {
@@ -122,11 +117,7 @@ fn try_run() -> AppResult<()> {
 
   let ccloader_dir = assets_dir.join(CCLOADER_DIR_NAME_IN_ASSETS);
   if ccloader_dir.is_dir() {
-    show_error(
-      &err_msg("The assets directory already contains a CCLoader installation"),
-      "Updating CCLoader isn't supported yet.",
-    );
-    return Ok(());
+    bail!("The assets directory already contains a CCLoader installation (updating CCLoader isn't supported yet)")
   }
 
   let user_wants_to_continue = ask_for_installation_confirmation(&assets_dir);
@@ -149,9 +140,13 @@ fn try_run() -> AppResult<()> {
   patch_crosscode_assets(&assets_dir)
     .context("Couldn't patch CrossCode assets")?;
 
+  let mods_dir = assets_dir.join(MODS_DIR_NAME_IN_ASSETS);
+  setup_mods_dir(&mods_dir, &ccloader_dir)
+    .context("Couldn't setup the mods directory")?;
+
   info!("installation finished successfully");
 
-  show_installation_success_alert();
+  show_installation_success_alert(&mods_dir);
 
   Ok(())
 }
@@ -425,16 +420,58 @@ fn patch_crosscode_assets(assets_dir: &Path) -> AppResult<()> {
   Ok(())
 }
 
-fn show_installation_success_alert() {
+fn setup_mods_dir(mods_dir: &Path, ccloader_dir: &Path) -> AppResult<()> {
+  use std::fs;
+  use std::io;
+
+  fs::create_dir_all(mods_dir).with_context(|_| {
+    format!("couldn't create directory '{}'", mods_dir.display())
+  })?;
+
+  for entry in fs::read_dir(ccloader_dir.join("builtin-mods"))
+    .context("couldn't get the contents of the built-in mods directory")?
+  {
+    let entry = entry
+      .context("couldn't get the contents of the built-in mods directory")?;
+    if let Ok(file_type) = entry.file_type() {
+      if file_type.is_dir() {
+        let name: std::ffi::OsString = entry.file_name();
+
+        #[cfg(unix)]
+        pub fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(
+          src: P,
+          dst: Q,
+        ) -> io::Result<()> {
+          std::os::unix::fs::symlink(src.as_ref(), dst.as_ref())
+        }
+
+        #[cfg(windows)]
+        use std::os::windows::symlink_dir;
+
+        if let Err(error) = symlink_dir(entry.path(), mods_dir.join(&name)) {
+          if error.kind() != io::ErrorKind::AlreadyExists {
+            return Err(error).context(format!(
+              "couldn't create a link for built-in mod '{}'",
+              name.to_string_lossy(),
+            ));
+          }
+        }
+      }
+    }
+  }
+
+  Ok(())
+}
+
+fn show_installation_success_alert(mods_dir: &Path) {
   use native_ui::*;
-  show_alert(AlertConfig {
+  if let Some(AlertResponse::PrimaryButtonPressed) = show_alert(AlertConfig {
     style: AlertStyle::Info,
     title: "CCLoader has been successfully installed!".to_owned(),
-    description: Some(
-      "You can now install mods by copying them into the assets/mods directory"
-        .to_owned(),
-    ),
-    primary_button_text: "OK".to_owned(),
-    secondary_button_text: None,
-  });
+    description: None,
+    primary_button_text: "Open the mods directory".to_owned(),
+    secondary_button_text: Some("Exit".to_owned()),
+  }) {
+    open_path(&mods_dir)
+  }
 }
