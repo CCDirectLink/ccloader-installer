@@ -1,4 +1,3 @@
-use crate::ascii_to_int::ascii_to_int;
 use http::header::{HeaderName, HeaderValue};
 use http::{StatusCode, Version};
 
@@ -128,9 +127,5 @@ impl<'a> ParserHelper<'a> {
         None
       }
     })
-  }
-
-  pub fn take_usize(&mut self) -> Option<usize> {
-    ascii_to_int(self.take_while(is_digit)?)
   }
 }

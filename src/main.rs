@@ -11,8 +11,10 @@ use flate2::bufread::GzDecoder;
 use serde_json::Value as JsonValue;
 use tar::Archive;
 
-mod ascii_to_int;
+#[macro_use]
 mod error;
+
+mod ascii_to_int;
 mod fancy_logger;
 mod http_client;
 mod native_ui;
@@ -144,6 +146,13 @@ fn try_run() -> AppResult<()> {
   unpack_release_archive(compressed_archive_data, &ccloader_dir)
     .context("Couldn't unpack the CCLoader release archive")?;
 
+  patch_crosscode_assets(&assets_dir)
+    .context("Couldn't patch CrossCode assets")?;
+
+  info!("installation finished successfully");
+
+  show_installation_success_alert();
+
   Ok(())
 }
 
@@ -209,23 +218,6 @@ fn ask_for_assets_dir() -> Option<PathBuf> {
   None
 }
 
-fn ask_for_installation_confirmation(assets_dir: &Path) -> bool {
-  use native_ui::*;
-
-  show_alert(AlertConfig {
-    style: AlertStyle::Info,
-    title:
-      "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue?"
-        .to_owned(),
-    description: Some(format!(
-      "Path to the assets directory is {}",
-      assets_dir.display()
-    )),
-    primary_button_text: "Yes".to_owned(),
-    secondary_button_text: Some("No, exit".to_owned()),
-  }) == Some(AlertResponse::PrimaryButtonPressed)
-}
-
 fn autodetect_assets_dir() -> Option<PathBuf> {
   possible_assets_locations().into_iter().find(|path| is_assets_dir(path))
 }
@@ -265,6 +257,23 @@ fn get_possible_assets_locations() -> Vec<PathBuf> {
     PathBuf::from("C:\\Program Files (x86)/Steam/steamapps/common/CrossCode"),
   ];
   result
+}
+
+fn ask_for_installation_confirmation(assets_dir: &Path) -> bool {
+  use native_ui::*;
+
+  show_alert(AlertConfig {
+    style: AlertStyle::Info,
+    title:
+      "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue?"
+        .to_owned(),
+    description: Some(format!(
+      "Path to the assets directory is {}",
+      assets_dir.display()
+    )),
+    primary_button_text: "Yes".to_owned(),
+    secondary_button_text: Some("No, exit".to_owned()),
+  }) == Some(AlertResponse::PrimaryButtonPressed)
 }
 
 fn fetch_latest_release_download_url(
@@ -365,6 +374,8 @@ fn unpack_release_archive(
   let mut archive = Archive::new(&mut decoder);
   archive.set_preserve_permissions(true);
 
+  info!("unpacking the release archive to {}", ccloader_dir.display());
+
   for entry in archive.entries().context("archive error")? {
     let mut entry = entry.context("archive read I/O error")?;
     let header = entry.header();
@@ -374,4 +385,56 @@ fn unpack_release_archive(
   }
 
   Ok(())
+}
+
+fn patch_crosscode_assets(assets_dir: &Path) -> AppResult<()> {
+  use std::fs::{File, OpenOptions};
+  use std::io::{Seek, SeekFrom};
+
+  let package_json_path = assets_dir.join("package.json");
+  info!("patching {}", package_json_path.display());
+
+  let mut package_json_file: File = OpenOptions::new()
+    .create(false)
+    .read(true)
+    .write(true)
+    .open(package_json_path)
+    .context("couldn't open package.json")?;
+
+  let mut package_json_data: JsonValue =
+    serde_json::from_reader(&mut package_json_file)
+      .context("couldn't read package.json")?;
+  if !package_json_data.is_object() {
+    bail!("data in package.json is invalid");
+  }
+
+  package_json_data["main"] =
+    JsonValue::String(format!("{}/index.html", CCLOADER_DIR_NAME_IN_ASSETS));
+
+  // truncate the file, then overwrite it with the patched data
+
+  // set_len can return an error only if the file isn't opened for writing, or
+  // the desired length would cause an integer overflow
+  package_json_file.set_len(0).unwrap();
+  // seek can fail only when called with a negative offset
+  package_json_file.seek(SeekFrom::Start(0)).unwrap();
+
+  serde_json::to_writer_pretty(&mut package_json_file, &package_json_data)
+    .context("couldn't write patched package.json")?;
+
+  Ok(())
+}
+
+fn show_installation_success_alert() {
+  use native_ui::*;
+  show_alert(AlertConfig {
+    style: AlertStyle::Info,
+    title: "CCLoader has been successfully installed!".to_owned(),
+    description: Some(
+      "You can now install mods by copying them into the assets/mods directory"
+        .to_owned(),
+    ),
+    primary_button_text: "OK".to_owned(),
+    secondary_button_text: None,
+  });
 }
