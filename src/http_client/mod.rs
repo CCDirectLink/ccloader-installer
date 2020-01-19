@@ -24,7 +24,13 @@ impl HttpClient {
   }
 
   pub fn send(&mut self, request: Request) -> Result<Response, CurlError> {
-    info!("{:?}", request);
+    info!(
+      "request: {} {} {:?} {:?}",
+      request.method(),
+      request.uri(),
+      request.version(),
+      request.headers()
+    );
 
     self.curl.reset();
     self.configure_curl_default()?;
@@ -49,6 +55,13 @@ impl HttpClient {
         self.curl.response_code()?
       } as u16)
       .unwrap();
+
+    info!(
+      "response: {:?} {} {:?}",
+      response.version(),
+      response.status(),
+      response.headers()
+    );
 
     Ok(response)
   }

@@ -17,7 +17,7 @@ mod fancy_logger;
 mod http_client;
 mod native_ui;
 
-use error::{Result as AppResult, ResultExt};
+use error::{err_msg, Error as AppError, Result as AppResult, ResultExt};
 use http_client::{
   Body, HttpClient, Request as HttpRequest, Response as HttpResponse,
   StatusCode, Uri,
@@ -31,6 +31,8 @@ const CCLOADER_GITHUB_API_RELEASE_URL: &str =
 
 const BUG_REPORT_TEXT: &str =
   "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server";
+
+const CCLOADER_DIR_NAME_IN_ASSETS: &str = "ccloader";
 
 fn main() {
   curl::init();
@@ -90,16 +92,21 @@ fn main() {
   fancy_logger::set_panic_hook();
 
   if let Err(error) = try_run() {
-    error!("{}", error);
-    native_ui::show_alert(native_ui::AlertConfig {
-      style: native_ui::AlertStyle::Problem,
-      title: error,
-      description: Some(BUG_REPORT_TEXT.to_owned()),
-      primary_button_text: "OK".to_owned(),
-      secondary_button_text: None,
-    });
-    std::process::exit(1);
+    show_error(&error, BUG_REPORT_TEXT);
   }
+}
+
+#[allow(clippy::ptr_arg)]
+fn show_error(error: &AppError, additional_description: &str) {
+  error!("{}\n{}", error, additional_description);
+  native_ui::show_alert(native_ui::AlertConfig {
+    style: native_ui::AlertStyle::Problem,
+    title: error.to_owned(),
+    description: Some(additional_description.to_owned()),
+    primary_button_text: "OK".to_owned(),
+    secondary_button_text: None,
+  });
+  std::process::exit(1);
 }
 
 fn try_run() -> AppResult<()> {
@@ -110,6 +117,15 @@ fn try_run() -> AppResult<()> {
     None => return Ok(()),
   };
   info!("assets dir = {}", assets_dir.display());
+
+  let ccloader_dir = assets_dir.join(CCLOADER_DIR_NAME_IN_ASSETS);
+  if ccloader_dir.is_dir() {
+    show_error(
+      &err_msg("The assets directory already contains a CCLoader installation"),
+      "Updating CCLoader isn't supported yet.",
+    );
+    return Ok(());
+  }
 
   let user_wants_to_continue = ask_for_installation_confirmation(&assets_dir);
   if !user_wants_to_continue {
@@ -125,7 +141,7 @@ fn try_run() -> AppResult<()> {
     download_release_archive(&mut client, ccloader_download_url)
       .context("Couldn't donwload the latest CCLoader release")?;
 
-  unpack_release_archive(compressed_archive_data)
+  unpack_release_archive(compressed_archive_data, &ccloader_dir)
     .context("Couldn't unpack the CCLoader release archive")?;
 
   Ok(())
@@ -270,15 +286,12 @@ fn fetch_latest_release_download_url(
   if status == StatusCode::FORBIDDEN {
     // try to provide a more useful error message in case of ratelimits
     if let Some(time) = try_get_github_api_ratelimit_reset_human(&response) {
-      return Err(format!(
-        "GitHub API ratelimit exceeded, please try again in {}",
-        time,
-      ));
+      bail!("GitHub API ratelimit exceeded, please try again in {}", time);
     }
   }
 
   if !status.is_success() {
-    return Err(format!("HTTP error: {}", status));
+    bail!("HTTP error: {}", status);
   }
 
   let release_data: JsonValue = serde_json::from_slice(&response.body())
@@ -338,27 +351,27 @@ fn download_release_archive(
 
   let status = response.status();
   if !status.is_success() {
-    return Err(format!("HTTP error: {}", status));
+    bail!("HTTP error: {}", status);
   }
 
   Ok(response.into_body())
 }
 
-fn unpack_release_archive(compressed_archive_data: Vec<u8>) -> AppResult<()> {
+fn unpack_release_archive(
+  compressed_archive_data: Vec<u8>,
+  ccloader_dir: &Path,
+) -> AppResult<()> {
   let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
   let mut archive = Archive::new(&mut decoder);
   archive.set_preserve_permissions(true);
 
   for entry in archive.entries().context("archive error")? {
-    if let Err(err) = entry.as_ref() {
-      error!("{:?}", err);
-    }
-    let entry = entry.context("I/O error")?;
+    let mut entry = entry.context("archive read I/O error")?;
     let header = entry.header();
-    info!("{:?} {:?}", header.path().unwrap(), header.size().unwrap());
-  }
+    info!("unpacking {}", String::from_utf8_lossy(&header.path_bytes()));
 
-  // archive.unpack("ccloader").unwrap();
+    entry.unpack_in(ccloader_dir).context("archive unpack I/O error")?;
+  }
 
   Ok(())
 }

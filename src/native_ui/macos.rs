@@ -18,6 +18,7 @@ use objc::{class, msg_send, sel, sel_impl};
 
 use super::{AlertConfig, AlertResponse, AlertStyle};
 
+#[allow(dead_code)]
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum NSAlertStyle {
@@ -27,6 +28,7 @@ enum NSAlertStyle {
 }
 use NSAlertStyle::*;
 
+#[allow(dead_code)]
 #[repr(isize)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum NSModalResponse {
