@@ -36,46 +36,56 @@ fn main() {
   curl::init();
   native_ui::init();
 
-  let log_file_name = format!("{}.log", env!("CARGO_PKG_NAME"));
-  let log_file_path: PathBuf = match fancy_logger::logs_directory() {
-    Some(logs_dir) => logs_dir.join(log_file_name),
-    None => PathBuf::from(log_file_name),
-  };
+  log4rs::init_config({
+    let log_file_name = format!("{}.log", env!("CARGO_PKG_NAME"));
+    let log_file_path: PathBuf = match fancy_logger::logs_directory() {
+      Some(logs_dir) => logs_dir.join(log_file_name),
+      None => {
+        eprintln!(
+          "logs directory not found, using the current working directory instead",
+        );
+        PathBuf::from(log_file_name)
+      },
+    };
 
-  let config = Config::builder()
-    .appender(Appender::builder().build(
-      "console",
+    let mut b = Config::builder();
+    let mut r = Root::builder();
+
+    const CONSOLE_APPENDER_NAME: &str = "console";
+    b = b.appender(Appender::builder().build(
+      CONSOLE_APPENDER_NAME,
       Box::new(fancy_logger::ConsoleAppender::new(Box::new(
         fancy_logger::Encoder,
       ))),
-    ))
-    .appender(
-      Appender::builder().build(
-        "file",
-        Box::new(
-          fancy_logger::FileAppender::new(
-            &log_file_path,
-            Box::new(fancy_logger::Encoder),
-          )
-          .unwrap(),
-        ),
-      ),
-    )
-    .build(
-      Root::builder()
-        .appender("console")
-        .appender("file")
-        .build(LevelFilter::Info),
-    )
-    .unwrap();
+    ));
+    r = r.appender(CONSOLE_APPENDER_NAME);
 
-  log4rs::init_config(config).unwrap();
+    const FILE_APPENDER_NAME: &str = "file";
+    match fancy_logger::FileAppender::new(
+      &log_file_path,
+      Box::new(fancy_logger::Encoder),
+    ) {
+      Ok(file_appender) => {
+        b = b.appender(
+          Appender::builder()
+            .build(FILE_APPENDER_NAME, Box::new(file_appender)),
+        );
+        r = r.appender(FILE_APPENDER_NAME);
+      }
+      Err(e) => {
+        eprintln!(
+          "couldn't open log file '{}': {}",
+          log_file_path.display(),
+          e
+        );
+      }
+    }
 
-  error!("ERROR");
-  warn!("ERROR");
-  info!("HELLO");
-  debug!("HELLO");
-  trace!("HELLO");
+    b.build(r.build(LevelFilter::Info)).unwrap()
+  })
+  // logger initialization can't fail because the only error which can occur
+  // happens if you try to set the logger twice
+  .unwrap();
 
   if let Err(error) = try_run() {
     error!("{}", error);
