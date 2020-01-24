@@ -1,10 +1,9 @@
 use std::convert::TryFrom;
-use std::fmt::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::str;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use log::{error, info, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 use log4rs::config::{Appender, Config, Root};
 
 use flate2::bufread::GzDecoder;
@@ -20,13 +19,10 @@ mod http_client;
 mod native_ui;
 
 use error::{Result as AppResult, ResultExt};
-use http_client::{
-  Body, HttpClient, Request as HttpRequest, Response as HttpResponse,
-  StatusCode, Uri,
-};
+use http_client::{Body, HttpClient, Request as HttpRequest, Uri};
 
-const CCLOADER_GITHUB_API_RELEASE_URL: &str =
-  "https://api.github.com/repos/dmitmel/CCLoader/releases/latest";
+const CCMODDB_DATA_URL: &str =
+  "https://github.com/CCDirectLink/CCModDB/raw/master/npDatabase.json";
 
 const BUG_REPORT_TEXT: &str =
   "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server. Bugs can be reported at https://github.com/dmitmel/ccloader-installer/issues";
@@ -125,28 +121,30 @@ fn try_run() -> AppResult<()> {
     return Ok(());
   }
 
-  let ccloader_download_url = fetch_latest_release_download_url(&mut client)
-    .context("Couldn't fetch the latest release information")?;
+  let (archive_download_url, archive_root_dir_name) =
+    fetch_latest_release_download_url(&mut client)
+      .context("Couldn't fetch the latest release information")?;
 
-  info!("release URL = {}", ccloader_download_url);
+  info!("release URL = {}", archive_download_url);
+  info!("release archive root dir = {}", archive_root_dir_name);
 
   let compressed_archive_data =
-    download_release_archive(&mut client, ccloader_download_url)
+    download_release_archive(&mut client, archive_download_url)
       .context("Couldn't donwload the latest CCLoader release")?;
 
-  unpack_release_archive(compressed_archive_data, &ccloader_dir)
-    .context("Couldn't unpack the CCLoader release archive")?;
+  unpack_release_archive(
+    compressed_archive_data,
+    &archive_root_dir_name,
+    &game_data_dir,
+  )
+  .context("Couldn't unpack the CCLoader release archive")?;
 
   patch_crosscode_assets(&game_data_dir)
     .context("Couldn't patch CrossCode assets")?;
 
-  let mods_dir = game_data_dir.join(MODS_DIR_PATH);
-  setup_mods_dir(&mods_dir, &ccloader_dir)
-    .context("Couldn't setup the mods directory")?;
-
   info!("installation finished successfully");
 
-  show_installation_success_alert(&mods_dir);
+  show_installation_success_alert(&game_data_dir);
 
   Ok(())
 }
@@ -249,8 +247,10 @@ fn possible_game_data_locations() -> Vec<PathBuf> {
 #[cfg(target_os = "windows")]
 fn get_possible_game_data_locations() -> Vec<PathBuf> {
   let mut result = vec![
-    PathBuf::from("C:\\Program Files/Steam/steamapps/common/CrossCode"),
-    PathBuf::from("C:\\Program Files (x86)/Steam/steamapps/common/CrossCode"),
+    PathBuf::from("C:\\Program Files\\Steam\\steamapps\\common\\CrossCode"),
+    PathBuf::from(
+      "C:\\Program Files (x86)\\Steam\\steamapps\\common\\CrossCode",
+    ),
   ];
   result
 }
@@ -274,76 +274,59 @@ fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
 
 fn fetch_latest_release_download_url(
   client: &mut HttpClient,
-) -> AppResult<Uri> {
+) -> AppResult<(Uri, String)> {
   let response = client
-    .send(
-      HttpRequest::get(CCLOADER_GITHUB_API_RELEASE_URL)
-        .header("Accept", "application/vnd.github.v3+json")
-        .body(Vec::new())
-        .unwrap(),
-    )
+    .send(HttpRequest::get(CCMODDB_DATA_URL).body(Vec::new()).unwrap())
     .context("network error")?;
 
   let status = response.status();
-
-  info!("{}", String::from_utf8_lossy(&response.body()));
-
-  if status == StatusCode::FORBIDDEN {
-    // try to provide a more useful error message in case of ratelimits
-    if let Some(time) = try_get_github_api_ratelimit_reset_human(&response) {
-      bail!("GitHub API ratelimit exceeded, please try again in {}", time);
-    }
-  }
-
   if !status.is_success() {
     bail!("HTTP error: {}", status);
   }
 
   let release_data: JsonValue = serde_json::from_slice(&response.body())
     .context("invalid response received from GitHub API")?;
-  let url_str: &str = get_download_url_from_release_data(&release_data)
-    .ok_or("invalid JSON data received from GitHub API")?;
+  let (url_str, root_dir_name) =
+    try_ccmoddb_data_into_download_url(release_data)
+      .ok_or("invalid JSON data received from GitHub API")?;
   let url: Uri = Uri::try_from(url_str)
     .context("invalid donwload URL received from GitHub API")?;
 
-  Ok(url)
+  Ok((url, root_dir_name))
 }
 
-fn try_get_github_api_ratelimit_reset_human(
-  response: &HttpResponse,
-) -> Option<String> {
-  let headers = response.headers();
+fn try_ccmoddb_data_into_download_url(
+  mut data: JsonValue,
+) -> Option<(String, String)> {
+  let package: &mut JsonValue = &mut data["ccloader"];
+  let artifacts: &mut Vec<JsonValue> =
+    package["installation"].as_array_mut()?;
 
-  if headers.get("x-ratelimit-remaining")? != "0" {
-    return None;
+  const ZIP_FILE_EXT: &str = ".zip";
+  const TAR_GZ_FILE_EXT: &str = ".tar.gz";
+  let main_artifact: &mut JsonValue =
+    artifacts.iter_mut().find(|artifact| {
+      artifact["type"].as_str() == Some("modZip")
+        && artifact["source"]
+          .as_str()
+          .map_or(false, |s| s.starts_with("CCLoader-"))
+        && artifact["url"].as_str().map_or(false, |s| s.ends_with(ZIP_FILE_EXT))
+    })?;
+
+  fn into_string(value: JsonValue) -> Option<String> {
+    match value {
+      JsonValue::String(s) => Some(s),
+      _ => None,
+    }
   }
-  let ratelimit_reset: u64 =
-    ascii_to_int::ascii_to_int(headers.get("x-ratelimit-reset")?.as_bytes())?;
+  let mut download_url = into_string(main_artifact["url"].take())?;
+  download_url.replace_range(
+    download_url.len() - ZIP_FILE_EXT.len()..download_url.len(),
+    TAR_GZ_FILE_EXT,
+  );
+  let root_dir_name = into_string(main_artifact["source"].take())?;
 
-  let duration_since_unix_epoch =
-    SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
-  let timestamp = duration_since_unix_epoch.as_secs();
-
-  let remaining_time = ratelimit_reset.checked_sub(timestamp)?;
-  let minutes = remaining_time / 60;
-  let seconds = remaining_time % 60;
-
-  let mut human_remaining_time = String::new();
-  if minutes > 0 {
-    write!(human_remaining_time, "{} minutes ", minutes).unwrap();
-  }
-  write!(human_remaining_time, "{} seconds", seconds).unwrap();
-
-  Some(human_remaining_time)
-}
-
-fn get_download_url_from_release_data(release: &JsonValue) -> Option<&str> {
-  let assets: &Vec<JsonValue> = release["assets"].as_array()?;
-  let ccloader_asset: &JsonValue = assets.iter().find(|asset| {
-    asset["name"].as_str().map_or(false, |name| name.starts_with("ccloader_"))
-  })?;
-  let url: &str = ccloader_asset["browser_download_url"].as_str()?;
-  Some(url)
+  Some((download_url, root_dir_name))
 }
 
 fn download_release_archive(
@@ -364,21 +347,78 @@ fn download_release_archive(
 
 fn unpack_release_archive(
   compressed_archive_data: Vec<u8>,
-  ccloader_dir: &Path,
+  root_dir_name: &str,
+  game_data_dir: &Path,
 ) -> AppResult<()> {
   let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
   let mut archive = Archive::new(&mut decoder);
   archive.set_preserve_permissions(true);
 
-  info!("unpacking the release archive to {}", ccloader_dir.display());
+  info!("unpacking the release archive to {}", game_data_dir.display());
+
+  let root_dir_path = Path::new(root_dir_name);
+
+  let unpacked_temporary_dir = game_data_dir.join(root_dir_path);
+  fs::create_dir_all(&unpacked_temporary_dir).with_context(|_| {
+    format!("couldn't create directory '{}'", root_dir_path.display())
+  })?;
 
   for entry in archive.entries().context("archive error")? {
     let mut entry = entry.context("archive read I/O error")?;
-    let header = entry.header();
-    info!("unpacking {}", String::from_utf8_lossy(&header.path_bytes()));
+    if let Ok(entry_path) = entry.path() {
+      let entry_path: PathBuf = entry_path.into_owned();
+      if let Ok(rel_path) = entry_path.strip_prefix(root_dir_path) {
+        if !(rel_path.starts_with(CCLOADER_DIR_PATH)
+          || rel_path.starts_with(MODS_DIR_PATH))
+        {
+          continue;
+        }
 
-    entry.unpack_in(ccloader_dir).context("archive unpack I/O error")?;
+        info!("unpacking {}", rel_path.display());
+        let was_unpacked: bool =
+          entry.unpack_in(game_data_dir).context("archive unpack I/O error")?;
+        if !was_unpacked {
+          continue;
+        }
+      }
+    }
   }
+
+  let install = |rel_path: &Path| -> AppResult<()> {
+    info!("installing {}", rel_path.display());
+    fs::rename(
+      unpacked_temporary_dir.join(rel_path),
+      game_data_dir.join(rel_path),
+    )
+    .with_context(|_| format!("couldn't install '{}'", rel_path.display()))
+  };
+
+  install(Path::new(CCLOADER_DIR_PATH))?;
+
+  let mods_dir = game_data_dir.join(MODS_DIR_PATH);
+  fs::create_dir_all(&mods_dir).with_context(|_| {
+    format!("couldn't create directory '{}'", mods_dir.display())
+  })?;
+  for entry in fs::read_dir(unpacked_temporary_dir.join(MODS_DIR_PATH))
+    .context("couldn't get the contents of the built-in mods directory")?
+  {
+    let entry = entry
+      .context("couldn't get the contents of the built-in mods directory")?;
+    if let Ok(file_type) = entry.file_type() {
+      if file_type.is_dir() {
+        let rel_path = Path::new(MODS_DIR_PATH).join(entry.file_name());
+        if !game_data_dir.join(&rel_path).is_dir() {
+          install(&rel_path)?;
+        } else {
+          warn!("{} has already been installed, skipping", rel_path.display());
+        }
+      }
+    }
+  }
+
+  fs::remove_dir_all(&unpacked_temporary_dir).with_context(|_| {
+    format!("couldn't delete directory '{}'", root_dir_path.display())
+  })?;
 
   Ok(())
 }
@@ -421,50 +461,7 @@ fn patch_crosscode_assets(game_data_dir: &Path) -> AppResult<()> {
   Ok(())
 }
 
-fn setup_mods_dir(mods_dir: &Path, ccloader_dir: &Path) -> AppResult<()> {
-  use std::fs;
-  use std::io;
-
-  fs::create_dir_all(mods_dir).with_context(|_| {
-    format!("couldn't create directory '{}'", mods_dir.display())
-  })?;
-
-  for entry in fs::read_dir(ccloader_dir.join("builtin-mods"))
-    .context("couldn't get the contents of the built-in mods directory")?
-  {
-    let entry = entry
-      .context("couldn't get the contents of the built-in mods directory")?;
-    if let Ok(file_type) = entry.file_type() {
-      if file_type.is_dir() {
-        let name: std::ffi::OsString = entry.file_name();
-
-        #[cfg(unix)]
-        pub fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(
-          src: P,
-          dst: Q,
-        ) -> io::Result<()> {
-          std::os::unix::fs::symlink(src.as_ref(), dst.as_ref())
-        }
-
-        #[cfg(windows)]
-        use std::os::windows::symlink_dir;
-
-        if let Err(error) = symlink_dir(entry.path(), mods_dir.join(&name)) {
-          if error.kind() != io::ErrorKind::AlreadyExists {
-            return Err(error).context(format!(
-              "couldn't create a link for built-in mod '{}'",
-              name.to_string_lossy(),
-            ));
-          }
-        }
-      }
-    }
-  }
-
-  Ok(())
-}
-
-fn show_installation_success_alert(mods_dir: &Path) {
+fn show_installation_success_alert(game_data_dir: &Path) {
   use native_ui::*;
   if let Some(AlertResponse::PrimaryButtonPressed) = show_alert(AlertConfig {
     style: AlertStyle::Info,
@@ -473,6 +470,6 @@ fn show_installation_success_alert(mods_dir: &Path) {
     primary_button_text: "Open the mods directory".to_owned(),
     secondary_button_text: Some("Exit".to_owned()),
   }) {
-    open_path(&mods_dir)
+    open_path(&game_data_dir.join(MODS_DIR_PATH))
   }
 }

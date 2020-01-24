@@ -22,10 +22,12 @@ pub fn parse_header(bytes: &[u8]) -> Option<(HeaderName, HeaderValue)> {
   // https://www.w3.org/Protocols/HTTP/1.1/draft-ietf-http-v11-spec-01#Message-Headers
   let mut p = ParserHelper::new(bytes);
   let name = HeaderName::from_bytes(p.take_while(is_token_char)?).ok()?;
-  p.take_seq(b":");
+  p.take_seq(b":")?;
   p.take_optional_while(is_whitespace_char);
-  let value =
-    HeaderValue::from_bytes(p.take_while(|b| !is_linebreak_char(b))?).ok()?;
+  let value = HeaderValue::from_bytes(
+    p.take_while(|b| !is_linebreak_char(b)).unwrap_or(b""),
+  )
+  .ok()?;
   Some((name, value))
 }
 
