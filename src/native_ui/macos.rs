@@ -8,7 +8,7 @@ use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 
 use cocoa::appkit::{
-  NSApplication, NSApplicationActivateIgnoringOtherApps,
+  NSApp, NSApplication, NSApplicationActivateIgnoringOtherApps,
   NSApplicationActivationPolicyRegular, NSRunningApplication,
 };
 use cocoa::base::{id, nil};
@@ -40,33 +40,41 @@ enum NSModalResponse {
 }
 use NSModalResponse::*;
 
-pub fn init() {
+fn autorelease<T, F: FnOnce() -> T>(f: F) -> T {
   unsafe {
-    let pool = NSAutoreleasePool::new(nil);
-
-    let app = NSApplication::sharedApplication(nil);
-    app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
-    app.finishLaunching();
-
+    let pool: id = NSAutoreleasePool::new(nil);
+    let result = f();
     pool.drain();
+    result
   }
 }
 
+pub fn init() {
+  autorelease(|| unsafe {
+    let app: id = NSApp();
+    app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
+    app.finishLaunching();
+  })
+}
+
+pub fn shutdown() {
+  autorelease(|| unsafe {
+    let app: id = NSApp();
+    let _: () = msg_send![app, terminate: nil];
+  })
+}
+
 fn request_focus() {
-  unsafe {
-    let pool = NSAutoreleasePool::new(nil);
-    let running_app = NSRunningApplication::currentApplication(nil);
+  autorelease(|| unsafe {
+    let running_app: id = NSRunningApplication::currentApplication(nil);
     running_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps);
-    pool.drain();
-  }
+  })
 }
 
 pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
   request_focus();
 
-  unsafe {
-    let pool = NSAutoreleasePool::new(nil);
-
+  autorelease(|| unsafe {
     let alert: id = msg_send![class!(NSAlert), alloc];
     let _: () = msg_send![alert, init];
     let _: () = msg_send![alert, autorelease];
@@ -95,24 +103,18 @@ pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
 
     let response: NSModalResponse = msg_send![alert, runModal];
 
-    let result = match response {
+    match response {
       NSAlertFirstButtonReturn => Some(AlertResponse::PrimaryButtonPressed),
       NSAlertSecondButtonReturn => Some(AlertResponse::SecondaryButtonPressed),
       _ => None,
-    };
-
-    pool.drain();
-
-    result
-  }
+    }
+  })
 }
 
 pub fn open_pick_folder_dialog() -> Option<PathBuf> {
   request_focus();
 
-  unsafe {
-    let pool = NSAutoreleasePool::new(nil);
-
+  autorelease(|| unsafe {
     let dialog: id = msg_send![class!(NSOpenPanel), openPanel];
     let _: () = msg_send![dialog, setAllowsMultipleSelection: NO];
     let _: () = msg_send![dialog, setCanChooseDirectories: YES];
@@ -120,27 +122,21 @@ pub fn open_pick_folder_dialog() -> Option<PathBuf> {
     let _: () = msg_send![dialog, setCanChooseFiles: NO];
     let response: NSModalResponse = msg_send![dialog, runModal];
 
-    let mut result = None;
-
     if response == NSModalResponseOK {
       let url: id = msg_send![dialog, URL];
       let cstr: *const c_char = url.path().UTF8String();
       if !cstr.is_null() {
         let bytes: Vec<u8> = CStr::from_ptr(cstr).to_bytes().to_owned();
-        result = Some(PathBuf::from(OsString::from_vec(bytes)))
+        return Some(PathBuf::from(OsString::from_vec(bytes)));
       }
     };
 
-    pool.drain();
-
-    result
-  }
+    None
+  })
 }
 
 pub fn open_path(path: &Path) {
-  unsafe {
-    let pool = NSAutoreleasePool::new(nil);
-
+  autorelease(|| unsafe {
     let shared_workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
     let ns_string: id = NSString::alloc(nil).init_str(
       // all paths on macOS must be valid Unicode (at least from my tests), so
@@ -149,7 +145,5 @@ pub fn open_path(path: &Path) {
       path.to_str().unwrap(),
     );
     let _: () = msg_send![shared_workspace, openFile: ns_string];
-
-    pool.drain();
-  }
+  })
 }

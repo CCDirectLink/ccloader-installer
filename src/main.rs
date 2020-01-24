@@ -101,6 +101,8 @@ fn main() {
       secondary_button_text: None,
     });
   }
+
+  native_ui::shutdown();
 }
 
 fn try_run() -> AppResult<()> {
