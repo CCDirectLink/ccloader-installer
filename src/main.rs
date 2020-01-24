@@ -3,16 +3,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use flate2::bufread::GzDecoder;
 use lazy_static::lazy_static;
 use log::{error, info, warn, LevelFilter};
 use log4rs::config::{Appender, Config, Root};
-
-use flate2::bufread::GzDecoder;
 use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 use tar::Archive;
 
 #[macro_use]
 mod error;
+use error::err_msg;
 
 mod ascii_to_int;
 mod fancy_logger;
@@ -124,20 +125,20 @@ fn try_run() -> AppResult<()> {
     return Ok(());
   }
 
-  let (archive_download_url, archive_root_dir_name) =
-    fetch_latest_release_download_url(&mut client)
-      .context("Couldn't fetch the latest release information")?;
+  let release_info = fetch_latest_release_info(&mut client)
+    .context("Couldn't fetch the latest release information")?;
 
-  info!("release URL = {}", archive_download_url);
-  info!("release archive root dir = {}", archive_root_dir_name.display());
+  info!("release info = {:?}", release_info);
 
   let compressed_archive_data =
-    download_release_archive(&mut client, archive_download_url)
+    download_release_archive(&mut client, release_info.download_url)
       .context("Couldn't donwload the latest CCLoader release")?;
+  let archive_hash = Sha256::digest(&compressed_archive_data);
+  info!("release archive SHA256 hash = {:x}", archive_hash);
 
   unpack_release_archive(
     compressed_archive_data,
-    &archive_root_dir_name,
+    &release_info.root_dir_path,
     &game_data_dir,
   )
   .context("Couldn't unpack the CCLoader release archive")?;
@@ -275,9 +276,16 @@ fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
   }) == Some(AlertResponse::PrimaryButtonPressed)
 }
 
-fn fetch_latest_release_download_url(
+#[derive(Debug)]
+struct ReleaseInfo {
+  download_url: Uri,
+  root_dir_path: PathBuf,
+  sha256_hash: String,
+}
+
+fn fetch_latest_release_info(
   client: &mut HttpClient,
-) -> AppResult<(Uri, PathBuf)> {
+) -> AppResult<ReleaseInfo> {
   let response = client
     .send(HttpRequest::get(CCMODDB_DATA_URL).body(Vec::new()).unwrap())
     .context("network error")?;
@@ -289,18 +297,14 @@ fn fetch_latest_release_download_url(
 
   let release_data: JsonValue = serde_json::from_slice(&response.body())
     .context("invalid response received from CCModDB")?;
-  let (url_str, root_dir_name) =
-    try_ccmoddb_data_into_download_url(release_data)
-      .ok_or("invalid JSON data received from CCModDB")?;
-  let url: Uri = Uri::try_from(url_str)
-    .context("invalid donwload URL received from CCModDB")?;
 
-  Ok((url, PathBuf::from(root_dir_name)))
+  try_ccmoddb_data_into_release_info(release_data)
+    .ok_or_else(|| err_msg("invalid JSON data received from CCModDB"))
 }
 
-fn try_ccmoddb_data_into_download_url(
+fn try_ccmoddb_data_into_release_info(
   mut data: JsonValue,
-) -> Option<(String, String)> {
+) -> Option<ReleaseInfo> {
   let package: &mut JsonValue = &mut data["ccloader"];
   let artifacts: &mut Vec<JsonValue> =
     package["installation"].as_array_mut()?;
@@ -328,8 +332,13 @@ fn try_ccmoddb_data_into_download_url(
     TAR_GZ_FILE_EXT,
   );
   let root_dir_name = into_string(main_artifact["source"].take())?;
+  let sha256_hash = into_string(main_artifact["hash"]["sha256"].take())?;
 
-  Some((download_url, root_dir_name))
+  Some(ReleaseInfo {
+    download_url: Uri::try_from(download_url).ok()?,
+    root_dir_path: PathBuf::from(root_dir_name),
+    sha256_hash,
+  })
 }
 
 fn download_release_archive(
