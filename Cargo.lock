@@ -112,6 +112,7 @@ dependencies = [
  "dirs",
  "flate2",
  "http",
+ "lazy_static",
  "libz-sys",
  "log",
  "log4rs",

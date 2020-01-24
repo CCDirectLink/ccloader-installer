@@ -10,6 +10,7 @@ repository = "https://github.com/dmitmel/ccloader-installer.git"
 homepage = "https://github.com/dmitmel/ccloader-installer"
 
 [dependencies]
+lazy_static = "*"
 log = "*"
 log4rs = { version = "*", default-features = false, features = ["ansi_writer", "console_writer", "simple_writer"] }
 time = "^0.1"

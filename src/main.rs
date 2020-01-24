@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use lazy_static::lazy_static;
 use log::{error, info, warn, LevelFilter};
 use log4rs::config::{Appender, Config, Root};
 
@@ -27,8 +28,10 @@ const CCMODDB_DATA_URL: &str =
 const BUG_REPORT_TEXT: &str =
   "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server. Bugs can be reported at https://github.com/dmitmel/ccloader-installer/issues";
 
-const CCLOADER_DIR_PATH: &str = "ccloader";
-const MODS_DIR_PATH: &str = "assets/mods";
+lazy_static! {
+  static ref CCLOADER_DIR_PATH: &'static Path = Path::new("ccloader");
+  static ref MODS_DIR_PATH: &'static Path = Path::new("assets/mods");
+}
 
 fn main() {
   curl::init();
@@ -110,7 +113,7 @@ fn try_run() -> AppResult<()> {
   };
   info!("game data dir = {}", game_data_dir.display());
 
-  let ccloader_dir = game_data_dir.join(CCLOADER_DIR_PATH);
+  let ccloader_dir = game_data_dir.join(&*CCLOADER_DIR_PATH);
   if ccloader_dir.is_dir() {
     bail!("The game data directory already contains a CCLoader installation (updating CCLoader isn't supported yet)")
   }
@@ -126,7 +129,7 @@ fn try_run() -> AppResult<()> {
       .context("Couldn't fetch the latest release information")?;
 
   info!("release URL = {}", archive_download_url);
-  info!("release archive root dir = {}", archive_root_dir_name);
+  info!("release archive root dir = {}", archive_root_dir_name.display());
 
   let compressed_archive_data =
     download_release_archive(&mut client, archive_download_url)
@@ -274,7 +277,7 @@ fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
 
 fn fetch_latest_release_download_url(
   client: &mut HttpClient,
-) -> AppResult<(Uri, String)> {
+) -> AppResult<(Uri, PathBuf)> {
   let response = client
     .send(HttpRequest::get(CCMODDB_DATA_URL).body(Vec::new()).unwrap())
     .context("network error")?;
@@ -285,14 +288,14 @@ fn fetch_latest_release_download_url(
   }
 
   let release_data: JsonValue = serde_json::from_slice(&response.body())
-    .context("invalid response received from GitHub API")?;
+    .context("invalid response received from CCModDB")?;
   let (url_str, root_dir_name) =
     try_ccmoddb_data_into_download_url(release_data)
-      .ok_or("invalid JSON data received from GitHub API")?;
+      .ok_or("invalid JSON data received from CCModDB")?;
   let url: Uri = Uri::try_from(url_str)
-    .context("invalid donwload URL received from GitHub API")?;
+    .context("invalid donwload URL received from CCModDB")?;
 
-  Ok((url, root_dir_name))
+  Ok((url, PathBuf::from(root_dir_name)))
 }
 
 fn try_ccmoddb_data_into_download_url(
@@ -347,7 +350,7 @@ fn download_release_archive(
 
 fn unpack_release_archive(
   compressed_archive_data: Vec<u8>,
-  root_dir_name: &str,
+  archive_root_dir_path: &Path,
   game_data_dir: &Path,
 ) -> AppResult<()> {
   let mut decoder = GzDecoder::new(&compressed_archive_data[..]);
@@ -356,20 +359,18 @@ fn unpack_release_archive(
 
   info!("unpacking the release archive to {}", game_data_dir.display());
 
-  let root_dir_path = Path::new(root_dir_name);
-
-  let unpacked_temporary_dir = game_data_dir.join(root_dir_path);
+  let unpacked_temporary_dir = game_data_dir.join(archive_root_dir_path);
   fs::create_dir_all(&unpacked_temporary_dir).with_context(|_| {
-    format!("couldn't create directory '{}'", root_dir_path.display())
+    format!("couldn't create directory '{}'", archive_root_dir_path.display())
   })?;
 
   for entry in archive.entries().context("archive error")? {
     let mut entry = entry.context("archive read I/O error")?;
     if let Ok(entry_path) = entry.path() {
       let entry_path: PathBuf = entry_path.into_owned();
-      if let Ok(rel_path) = entry_path.strip_prefix(root_dir_path) {
-        if !(rel_path.starts_with(CCLOADER_DIR_PATH)
-          || rel_path.starts_with(MODS_DIR_PATH))
+      if let Ok(rel_path) = entry_path.strip_prefix(archive_root_dir_path) {
+        if !(rel_path.starts_with(&*CCLOADER_DIR_PATH)
+          || rel_path.starts_with(&*MODS_DIR_PATH))
         {
           continue;
         }
@@ -393,20 +394,20 @@ fn unpack_release_archive(
     .with_context(|_| format!("couldn't install '{}'", rel_path.display()))
   };
 
-  install(Path::new(CCLOADER_DIR_PATH))?;
+  install(&*CCLOADER_DIR_PATH)?;
 
-  let mods_dir = game_data_dir.join(MODS_DIR_PATH);
+  let mods_dir = game_data_dir.join(&*MODS_DIR_PATH);
   fs::create_dir_all(&mods_dir).with_context(|_| {
     format!("couldn't create directory '{}'", mods_dir.display())
   })?;
-  for entry in fs::read_dir(unpacked_temporary_dir.join(MODS_DIR_PATH))
+  for entry in fs::read_dir(unpacked_temporary_dir.join(&*MODS_DIR_PATH))
     .context("couldn't get the contents of the built-in mods directory")?
   {
     let entry = entry
       .context("couldn't get the contents of the built-in mods directory")?;
     if let Ok(file_type) = entry.file_type() {
       if file_type.is_dir() {
-        let rel_path = Path::new(MODS_DIR_PATH).join(entry.file_name());
+        let rel_path = MODS_DIR_PATH.join(entry.file_name());
         if !game_data_dir.join(&rel_path).is_dir() {
           install(&rel_path)?;
         } else {
@@ -417,7 +418,7 @@ fn unpack_release_archive(
   }
 
   fs::remove_dir_all(&unpacked_temporary_dir).with_context(|_| {
-    format!("couldn't delete directory '{}'", root_dir_path.display())
+    format!("couldn't delete directory '{}'", archive_root_dir_path.display())
   })?;
 
   Ok(())
@@ -444,8 +445,13 @@ fn patch_crosscode_assets(game_data_dir: &Path) -> AppResult<()> {
     bail!("data in package.json is invalid");
   }
 
-  package_json_data["main"] =
-    JsonValue::String(format!("{}/index.html", CCLOADER_DIR_PATH));
+  package_json_data["main"] = JsonValue::String(format!(
+    "{}/index.html",
+    // unwrap is used because a) this is a compile time constant, so I can
+    // guarantee that it's properly encoded because b) JSON strings can contain
+    // only valid Unicode characters
+    CCLOADER_DIR_PATH.to_str().unwrap()
+  ));
 
   // truncate the file, then overwrite it with the patched data
 
@@ -470,6 +476,6 @@ fn show_installation_success_alert(game_data_dir: &Path) {
     primary_button_text: "Open the mods directory".to_owned(),
     secondary_button_text: Some("Exit".to_owned()),
   }) {
-    open_path(&game_data_dir.join(MODS_DIR_PATH))
+    open_path(&game_data_dir.join(&*MODS_DIR_PATH))
   }
 }
