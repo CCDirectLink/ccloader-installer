@@ -268,7 +268,7 @@ fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
       "Path to the game data directory is {}",
       game_data_dir.display()
     )),
-    primary_button_text: "Yes".to_owned(),
+    primary_button_text: "Yes (this will take some time)".to_owned(),
     secondary_button_text: Some("No, exit".to_owned()),
   }) == Some(AlertResponse::PrimaryButtonPressed)
 }
