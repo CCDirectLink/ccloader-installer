@@ -144,6 +144,7 @@ pub fn open_path(path: &Path) {
       // it from NSString to a Rust's UTF-8 string
       path.to_str().unwrap(),
     );
-    let _: () = msg_send![shared_workspace, openFile: ns_string];
+    let ns_url = NSURL::fileURLWithPath_(nil, ns_string);
+    let _: () = msg_send![shared_workspace, openURL: ns_url];
   })
 }

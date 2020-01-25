@@ -32,3 +32,7 @@ cocoa = "*"
 static-curl = ["curl/static-curl"]
 static-libz = ["libz-sys/static"]
 static = ["static-curl", "static-libz"]
+
+[package.metadata.bundle]
+# name = "CCLoader Installer"
+identifier = "org.ccdirectlink.ccloader-installer"
