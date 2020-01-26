@@ -157,7 +157,7 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
     style: AlertStyle::Info,
     title: "Welcome to CCLoader installer".to_owned(),
     description: Some(
-      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory. Would you like to autodetect your CC installation? press 'Yes' to autodetect and 'No' to specify the path manually."
+      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory. Would you like to autodetect your CC installation? Press 'Yes' to autodetect and 'No' to specify the path manually."
         .to_owned(),
     ),
     buttons: AlertButtons::YesNoCancel,
