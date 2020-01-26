@@ -28,6 +28,10 @@ tar = { version = "*", default-features = false }
 objc = "*"
 cocoa = "*"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "*", features = ["winuser", "shobjidl", "shellapi"] }
+wio = "*"
+
 [features]
 static-curl = ["curl/static-curl"]
 static-libz = ["libz-sys/static"]

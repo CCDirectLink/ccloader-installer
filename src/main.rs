@@ -243,14 +243,13 @@ fn possible_game_data_locations() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_possible_game_data_locations() -> Vec<PathBuf> {
-  let mut result = vec![
+fn possible_game_data_locations() -> Vec<PathBuf> {
+  vec![
     PathBuf::from("C:\\Program Files\\Steam\\steamapps\\common\\CrossCode"),
     PathBuf::from(
       "C:\\Program Files (x86)\\Steam\\steamapps\\common\\CrossCode",
     ),
-  ];
-  result
+  ]
 }
 
 fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
