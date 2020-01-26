@@ -1,12 +1,14 @@
+use std::path::{Path, PathBuf};
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use macos::*;
+use macos as sys;
 
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-pub use windows::*;
+use windows as sys;
 
 #[derive(Debug, Clone)]
 pub struct AlertConfig {
@@ -50,4 +52,24 @@ pub enum AlertResponse {
   Button1Pressed,
   Button2Pressed,
   Button3Pressed,
+}
+
+pub fn init() {
+  sys::init()
+}
+
+pub fn shutdown() {
+  sys::shutdown()
+}
+
+pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
+  sys::show_alert(config)
+}
+
+pub fn open_pick_folder_dialog() -> Option<PathBuf> {
+  sys::open_pick_folder_dialog()
+}
+
+pub fn open_path(path: &Path) {
+  sys::open_path(path)
 }
