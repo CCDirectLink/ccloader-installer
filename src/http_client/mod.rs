@@ -71,8 +71,8 @@ impl HttpClient {
     // self.curl.fail_on_error(true)?;
     self.curl.useragent(&format!(
       "{}/{} (by @dmitmel)",
-      env!("CARGO_PKG_NAME"),
-      env!("CARGO_PKG_VERSION")
+      crate::PKG_NAME,
+      crate::PKG_VERSION,
     ))?;
     Ok(())
   }

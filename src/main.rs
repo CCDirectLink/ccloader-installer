@@ -22,6 +22,9 @@ mod native_ui;
 use error::{Result as AppResult, ResultExt};
 use http_client::{Body, HttpClient, Request as HttpRequest, Uri};
 
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 const CCMODDB_DATA_URL: &str =
   "https://github.com/CCDirectLink/CCModDB/raw/master/npDatabase.json";
 
@@ -38,7 +41,7 @@ fn main() {
   native_ui::init();
 
   log4rs::init_config({
-    let log_file_name = format!("{}.log", env!("CARGO_PKG_NAME"));
+    let log_file_name = format!("{}.log", PKG_NAME);
     let log_file_path: PathBuf = match fancy_logger::logs_directory() {
       Some(logs_dir) => logs_dir.join(log_file_name),
       None => {
@@ -155,7 +158,7 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
 
   let try_to_autodetect = match show_alert(AlertConfig {
     style: AlertStyle::Info,
-    title: "Welcome to CCLoader installer".to_owned(),
+    title: format!("Welcome to CCLoader installer v{}", env!("CARGO_PKG_VERSION")),
     description: Some(
       "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory. Would you like to autodetect your CC installation? Press 'Yes' to autodetect and 'No' to specify the path manually."
         .to_owned(),
