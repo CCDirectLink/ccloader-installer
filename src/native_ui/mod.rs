@@ -8,11 +8,32 @@ pub struct AlertConfig {
   pub style: AlertStyle,
   pub title: String,
   pub description: Option<String>,
-  pub primary_button_text: String,
-  pub secondary_button_text: Option<String>,
+  pub buttons: AlertButtons,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum AlertButtons {
+  Ok,
+  OkCancel,
+  RetryCancel,
+  YesNo,
+  YesNoCancel,
+}
+
+impl AlertButtons {
+  fn to_strings(self) -> &'static [&'static str] {
+    use AlertButtons::*;
+    match self {
+      Ok => &["OK"],
+      OkCancel => &["OK", "Cancel"],
+      RetryCancel => &["Retry", "Cancel"],
+      YesNo => &["Yes", "No"],
+      YesNoCancel => &["Yes", "No", "Cancel"],
+    }
+  }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AlertStyle {
   Info,
   Problem,
@@ -20,6 +41,7 @@ pub enum AlertStyle {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AlertResponse {
-  PrimaryButtonPressed,
-  SecondaryButtonPressed,
+  Button1Pressed,
+  Button2Pressed,
+  Button3Pressed,
 }

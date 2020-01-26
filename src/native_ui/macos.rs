@@ -94,18 +94,17 @@ pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
     };
     let _: () = msg_send![alert, setAlertStyle: ns_alert_style];
 
-    let ns_string = NSString::alloc(nil).init_str(&config.primary_button_text);
-    let _: () = msg_send![alert, addButtonWithTitle: ns_string];
-    if let Some(secondary_button_text) = config.secondary_button_text {
-      let ns_string = NSString::alloc(nil).init_str(&secondary_button_text);
+    for button_text in config.buttons.to_strings() {
+      ns_string = NSString::alloc(nil).init_str(button_text);
       let _: () = msg_send![alert, addButtonWithTitle: ns_string];
     }
 
     let response: NSModalResponse = msg_send![alert, runModal];
 
     match response {
-      NSAlertFirstButtonReturn => Some(AlertResponse::PrimaryButtonPressed),
-      NSAlertSecondButtonReturn => Some(AlertResponse::SecondaryButtonPressed),
+      NSAlertFirstButtonReturn => Some(AlertResponse::Button1Pressed),
+      NSAlertSecondButtonReturn => Some(AlertResponse::Button2Pressed),
+      NSAlertThirdButtonReturn => Some(AlertResponse::Button3Pressed),
       _ => None,
     }
   })

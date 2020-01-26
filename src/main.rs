@@ -91,13 +91,13 @@ fn main() {
   fancy_logger::set_panic_hook();
 
   if let Err(error) = try_run() {
+    use native_ui::*;
     error!("{}", error);
-    native_ui::show_alert(native_ui::AlertConfig {
-      style: native_ui::AlertStyle::Problem,
+    show_alert(AlertConfig {
+      style: AlertStyle::Problem,
       title: error,
       description: Some(BUG_REPORT_TEXT.to_owned()),
-      primary_button_text: "OK".to_owned(),
-      secondary_button_text: None,
+      buttons: AlertButtons::Ok,
     });
   }
 
@@ -157,15 +157,14 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
     style: AlertStyle::Info,
     title: "Welcome to CCLoader installer".to_owned(),
     description: Some(
-      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory."
+      "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory. Would you like to autodetect your CC installation? press 'Yes' to autodetect and 'No' to specify the path manually."
         .to_owned(),
     ),
-    primary_button_text: "Try to autodetect CC".to_owned(),
-    secondary_button_text: Some("Specify the game data path manually".to_owned()),
+    buttons: AlertButtons::YesNoCancel,
   }) {
-    Some(AlertResponse::PrimaryButtonPressed) => true,
-    None => return None,
-    _ => false,
+    Some(AlertResponse::Button1Pressed) => true,
+    Some(AlertResponse::Button2Pressed) => false,
+    _ => return None,
   };
 
   if try_to_autodetect {
@@ -176,13 +175,12 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
       info!("autodetection failed");
       match show_alert(AlertConfig {
         style: AlertStyle::Problem,
-        title: "Couldn't autodetect your CrossCode game data directory"
+        title: "Couldn't autodetect your CrossCode game data directory. Press 'OK' to specify the path to it manually."
           .to_owned(),
         description: None,
-        primary_button_text: "Specify the game data path manually".to_owned(),
-        secondary_button_text: Some("Exit".to_owned()),
+        buttons: AlertButtons::OkCancel,
       }) {
-        Some(AlertResponse::PrimaryButtonPressed) => {}
+        Some(AlertResponse::Button1Pressed) => {}
         _ => return None,
       }
     }
@@ -201,10 +199,9 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
           "Couldn't detect a CrossCode game data directory here. Please, try again."
             .to_owned(),
         description: None,
-        primary_button_text: "Specify path to CC manually".to_owned(),
-        secondary_button_text: Some("Exit".to_owned()),
+        buttons: AlertButtons::RetryCancel,
       }) {
-        Some(AlertResponse::PrimaryButtonPressed) => {}
+        Some(AlertResponse::Button1Pressed) => {}
         _ => break,
       }
     }
@@ -262,15 +259,14 @@ fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
   show_alert(AlertConfig {
     style: AlertStyle::Info,
     title:
-      "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue?"
+      "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue? The installation process will take some time."
         .to_owned(),
     description: Some(format!(
       "Path to the game data directory is {}",
       game_data_dir.display()
     )),
-    primary_button_text: "Yes (this will take some time)".to_owned(),
-    secondary_button_text: Some("No, exit".to_owned()),
-  }) == Some(AlertResponse::PrimaryButtonPressed)
+    buttons: AlertButtons::YesNo,
+  }) == Some(AlertResponse::Button1Pressed)
 }
 
 #[derive(Debug)]
@@ -472,12 +468,11 @@ fn patch_crosscode_assets(game_data_dir: &Path) -> AppResult<()> {
 
 fn show_installation_success_alert(game_data_dir: &Path) {
   use native_ui::*;
-  if let Some(AlertResponse::PrimaryButtonPressed) = show_alert(AlertConfig {
+  if let Some(AlertResponse::Button1Pressed) = show_alert(AlertConfig {
     style: AlertStyle::Info,
     title: "CCLoader has been successfully installed!".to_owned(),
-    description: None,
-    primary_button_text: "Open the mods directory".to_owned(),
-    secondary_button_text: Some("Exit".to_owned()),
+    description: Some("Open the mods directory?".to_owned()),
+    buttons: AlertButtons::YesNo,
   }) {
     open_path(&game_data_dir.join(&*MODS_DIR_PATH))
   }
