@@ -8,6 +8,7 @@ description = "CCLoader installer"
 license = "MIT"
 repository = "https://github.com/dmitmel/ccloader-installer.git"
 homepage = "https://github.com/dmitmel/ccloader-installer"
+build = "build.rs"
 
 [dependencies]
 lazy_static = "*"
@@ -32,11 +33,13 @@ cocoa = "*"
 winapi = { version = "*", features = ["winuser", "shobjidl", "shellapi"] }
 wio = "*"
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource = "*"
+
 [features]
 static-curl = ["curl/static-curl"]
 static-libz = ["libz-sys/static"]
 static = ["static-curl", "static-libz"]
 
 [package.metadata.bundle]
-# name = "CCLoader Installer"
 identifier = "org.ccdirectlink.ccloader-installer"

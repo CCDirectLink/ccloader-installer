@@ -10,9 +10,9 @@ use std::io::{self, BufWriter, Stderr, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 const NEWLINE: &[u8] = b"\r\n";
-#[cfg(not(windows))]
+#[cfg(not(target_os = "windows"))]
 const NEWLINE: &[u8] = b"\n";
 
 #[cfg(target_os = "macos")]
