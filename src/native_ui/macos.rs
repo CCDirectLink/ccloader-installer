@@ -16,7 +16,7 @@ use cocoa::foundation::{NSAutoreleasePool, NSString, NSURL};
 use objc::runtime::{NO, YES};
 use objc::{class, msg_send, sel, sel_impl};
 
-use super::{AlertConfig, AlertResponse, AlertStyle};
+use super::{AlertConfig, AlertIcon, AlertResponse};
 
 #[allow(dead_code)]
 #[repr(usize)]
@@ -88,9 +88,9 @@ pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
       let _: () = msg_send![alert, setInformativeText: ns_string];
     }
 
-    let ns_alert_style: NSAlertStyle = match config.style {
-      AlertStyle::Info => NSInformationalAlertStyle,
-      AlertStyle::Problem => NSCriticalAlertStyle,
+    let ns_alert_style: NSAlertStyle = match config.icon {
+      AlertIcon::Info => NSInformationalAlertStyle,
+      AlertIcon::Warning | AlertIcon::Error => NSCriticalAlertStyle,
     };
     let _: () = msg_send![alert, setAlertStyle: ns_alert_style];
 

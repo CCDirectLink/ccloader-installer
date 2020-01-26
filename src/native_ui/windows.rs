@@ -21,7 +21,7 @@ use winapi::{Interface, DEFINE_GUID};
 use wio::com::ComPtr;
 use wio::wide::{FromWide, ToWide};
 
-use super::{AlertButtons, AlertConfig, AlertResponse, AlertStyle};
+use super::{AlertButtons, AlertConfig, AlertIcon, AlertResponse};
 
 // taken from https://github.com/xi-editor/druid/blob/bafa1b9cb0fe156e9800a17f5d5e751be4ef6286/druid-shell/src/platform/windows/dialog.rs#L44-L46
 // TODO: remove these when they get added to winapi
@@ -61,9 +61,10 @@ pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
   .to_wide_null();
   let title: Vec<u16> = crate::PKG_NAME.to_wide_null();
 
-  let window_type: UINT = match config.style {
-    AlertStyle::Problem => MB_ICONERROR,
-    AlertStyle::Info => MB_ICONINFORMATION,
+  let window_type: UINT = match config.icon {
+    AlertIcon::Info => MB_ICONINFORMATION,
+    AlertIcon::Warning => MB_ICONWARNING,
+    AlertIcon::Error => MB_ICONERROR,
   } | match config.buttons {
     AlertButtons::Ok => MB_OK,
     AlertButtons::OkCancel => MB_OKCANCEL,

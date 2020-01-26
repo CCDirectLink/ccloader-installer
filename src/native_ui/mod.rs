@@ -12,7 +12,7 @@ use windows as sys;
 
 #[derive(Debug, Clone)]
 pub struct AlertConfig {
-  pub style: AlertStyle,
+  pub icon: AlertIcon,
   pub title: String,
   pub description: Option<String>,
   pub buttons: AlertButtons,
@@ -42,9 +42,10 @@ impl AlertButtons {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum AlertStyle {
+pub enum AlertIcon {
   Info,
-  Problem,
+  Warning,
+  Error,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

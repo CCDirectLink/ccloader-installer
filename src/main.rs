@@ -97,7 +97,7 @@ fn main() {
     use native_ui::*;
     error!("{}", error);
     show_alert(AlertConfig {
-      style: AlertStyle::Problem,
+      icon: AlertIcon::Error,
       title: error,
       description: Some(BUG_REPORT_TEXT.to_owned()),
       buttons: AlertButtons::Ok,
@@ -157,7 +157,7 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
   use native_ui::*;
 
   let try_to_autodetect = match show_alert(AlertConfig {
-    style: AlertStyle::Info,
+    icon: AlertIcon::Info,
     title: format!("Welcome to CCLoader installer v{}", env!("CARGO_PKG_VERSION")),
     description: Some(
       "This program installs the CCLoader mod loader for CrossCode. However, it first needs to locate your CrossCode game data directory. Would you like to autodetect your CC installation? Press 'Yes' to autodetect and 'No' to specify the path manually."
@@ -177,7 +177,7 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
     } else {
       info!("autodetection failed");
       match show_alert(AlertConfig {
-        style: AlertStyle::Problem,
+        icon: AlertIcon::Warning,
         title: "Couldn't autodetect your CrossCode game data directory. Press 'OK' to specify the path to it manually."
           .to_owned(),
         description: None,
@@ -197,7 +197,7 @@ fn ask_for_game_data_dir() -> Option<PathBuf> {
       return Some(path);
     } else {
       match show_alert(AlertConfig {
-        style: AlertStyle::Problem,
+        icon: AlertIcon::Warning,
         title:
           "Couldn't detect a CrossCode game data directory here. Please, try again."
             .to_owned(),
@@ -259,7 +259,7 @@ fn ask_for_installation_confirmation(game_data_dir: &Path) -> bool {
   use native_ui::*;
 
   show_alert(AlertConfig {
-    style: AlertStyle::Info,
+    icon: AlertIcon::Info,
     title:
       "In order to install CCLoader, this installer has to modify CC asset files. Do you want to continue? The installation process will take some time."
         .to_owned(),
@@ -471,7 +471,7 @@ fn patch_crosscode_assets(game_data_dir: &Path) -> AppResult<()> {
 fn show_installation_success_alert(game_data_dir: &Path) {
   use native_ui::*;
   if let Some(AlertResponse::Button1Pressed) = show_alert(AlertConfig {
-    style: AlertStyle::Info,
+    icon: AlertIcon::Info,
     title: "CCLoader has been successfully installed!".to_owned(),
     description: Some("Open the mods directory?".to_owned()),
     buttons: AlertButtons::YesNo,
