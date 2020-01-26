@@ -177,7 +177,7 @@ fn is_game_data_dir(path: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn get_possible_game_data_locations() -> Vec<PathBuf> {
+fn possible_game_data_locations() -> Vec<PathBuf> {
   let mut result = Vec::with_capacity(1);
   if let Some(home) = dirs::home_dir() {
     result.push(home.join(".steam/steam/steamapps/common/CrossCode"));
