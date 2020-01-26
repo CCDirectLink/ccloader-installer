@@ -1,8 +1,3 @@
-use encode::writer::console::ConsoleWriter;
-use encode::writer::simple::SimpleWriter;
-use log::{error, Level, Record};
-use log4rs::append::Append;
-use log4rs::encode::{self, Color, Encode, Style};
 use std::error::Error;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -10,19 +5,74 @@ use std::io::{self, BufWriter, Stderr, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use encode::writer::console::ConsoleWriter;
+use encode::writer::simple::SimpleWriter;
+use log::{error, Level, LevelFilter, Record};
+use log4rs::append::Append;
+use log4rs::config::{Appender, Config, Root};
+use log4rs::encode::{self, Color, Encode, Style};
+
 #[cfg(target_os = "windows")]
 const NEWLINE: &[u8] = b"\r\n";
 #[cfg(not(target_os = "windows"))]
 const NEWLINE: &[u8] = b"\n";
 
 #[cfg(target_os = "macos")]
-pub fn logs_directory() -> Option<PathBuf> {
+fn logs_directory() -> Option<PathBuf> {
   dirs::home_dir().map(|h| h.join("Library/Logs"))
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn logs_directory() -> Option<PathBuf> {
+fn logs_directory() -> Option<PathBuf> {
   dirs::data_local_dir()
+}
+
+pub fn init() {
+  log4rs::init_config({
+    let log_file_name = format!("{}.log", crate::PKG_NAME);
+    let log_file_path: PathBuf = match logs_directory() {
+      Some(logs_dir) => logs_dir.join(log_file_name),
+      None => {
+        eprintln!(
+          "logs directory not found, using the current working directory instead",
+        );
+        PathBuf::from(log_file_name)
+      }
+    };
+
+    let mut b = Config::builder();
+    let mut r = Root::builder();
+
+    const CONSOLE_APPENDER_NAME: &str = "console";
+    b = b.appender(Appender::builder().build(
+      CONSOLE_APPENDER_NAME,
+      Box::new(ConsoleAppender::new(Box::new(Encoder))),
+    ));
+    r = r.appender(CONSOLE_APPENDER_NAME);
+
+    const FILE_APPENDER_NAME: &str = "file";
+    match FileAppender::new(&log_file_path, Box::new(Encoder)) {
+      Ok(file_appender) => {
+        b = b.appender(
+          Appender::builder()
+            .build(FILE_APPENDER_NAME, Box::new(file_appender)),
+        );
+        r = r.appender(FILE_APPENDER_NAME);
+      }
+      Err(e) => {
+        eprintln!(
+          "couldn't open log file '{}' (continuing anyway): {}",
+          log_file_path.display(),
+          e
+        );
+      }
+    }
+
+    b.build(r.build(LevelFilter::Info)).unwrap()
+  })
+  // logger initialization can't fail because the only error which can occur
+  // happens if you try to set the logger twice
+  .unwrap();
 }
 
 pub fn set_panic_hook() {

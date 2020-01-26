@@ -5,8 +5,7 @@ use std::str;
 
 use flate2::bufread::GzDecoder;
 use lazy_static::lazy_static;
-use log::{error, info, warn, LevelFilter};
-use log4rs::config::{Appender, Config, Root};
+use log::{error, info, warn};
 use serde_json::Value as JsonValue;
 use tar::Archive;
 
@@ -37,59 +36,11 @@ lazy_static! {
 }
 
 fn main() {
+  fancy_logger::init();
+  info!("{} v{}", PKG_NAME, PKG_VERSION);
+
   curl::init();
   native_ui::init();
-
-  log4rs::init_config({
-    let log_file_name = format!("{}.log", PKG_NAME);
-    let log_file_path: PathBuf = match fancy_logger::logs_directory() {
-      Some(logs_dir) => logs_dir.join(log_file_name),
-      None => {
-        eprintln!(
-          "logs directory not found, using the current working directory instead",
-        );
-        PathBuf::from(log_file_name)
-      },
-    };
-
-    let mut b = Config::builder();
-    let mut r = Root::builder();
-
-    const CONSOLE_APPENDER_NAME: &str = "console";
-    b = b.appender(Appender::builder().build(
-      CONSOLE_APPENDER_NAME,
-      Box::new(fancy_logger::ConsoleAppender::new(Box::new(
-        fancy_logger::Encoder,
-      ))),
-    ));
-    r = r.appender(CONSOLE_APPENDER_NAME);
-
-    const FILE_APPENDER_NAME: &str = "file";
-    match fancy_logger::FileAppender::new(
-      &log_file_path,
-      Box::new(fancy_logger::Encoder),
-    ) {
-      Ok(file_appender) => {
-        b = b.appender(
-          Appender::builder()
-            .build(FILE_APPENDER_NAME, Box::new(file_appender)),
-        );
-        r = r.appender(FILE_APPENDER_NAME);
-      }
-      Err(e) => {
-        eprintln!(
-          "couldn't open log file '{}' (continuing anyway): {}",
-          log_file_path.display(),
-          e
-        );
-      }
-    }
-
-    b.build(r.build(LevelFilter::Info)).unwrap()
-  })
-  // logger initialization can't fail because the only error which can occur
-  // happens if you try to set the logger twice
-  .unwrap();
 
   fancy_logger::set_panic_hook();
 
