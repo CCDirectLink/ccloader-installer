@@ -97,7 +97,7 @@ fn try_run() -> AppResult<()> {
   patch_crosscode_assets(&game_data_dir)
     .context("Couldn't patch CrossCode assets")?;
 
-  info!("installation finished successfully");
+  info!("installation completed successfully");
 
   show_installation_success_alert(&game_data_dir);
 
