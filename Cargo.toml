@@ -30,7 +30,7 @@ objc = "*"
 cocoa = "*"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
-gio-sys = "*"
+gio-sys = { version = "*", features = ["v2_50"] }
 glib-sys = "*"
 gobject-sys = "*"
 gtk-sys = "*"

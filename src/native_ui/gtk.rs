@@ -19,9 +19,7 @@ pub fn init() {
   }
 }
 
-pub fn shutdown() {
-  // unimplemented!()
-}
+pub fn shutdown() {}
 
 pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
   unsafe {
@@ -127,25 +125,60 @@ pub fn open_pick_folder_dialog() -> Option<PathBuf> {
   }
 }
 
+#[allow(clippy::while_immutable_condition)]
 pub fn open_path(path: &Path) {
   unsafe {
-    let mut error: *mut GError = null_mut();
+    // adapted from https://github.com/GNOME/glib/blob/3dec72b946a527f4b1f35262bddd4afb060409b7/gio/gio-tool-open.c
 
+    let mut error: *mut GError = null_mut();
     let path = CString::new(path.as_os_str().as_bytes()).unwrap();
     let uri: *mut c_char = g_filename_to_uri(path.as_ptr(), null(), &mut error);
-    if !error.is_null() {
-      panic!("GTK error: {:?}", error)
-    }
+    check_error(error);
 
-    g_app_info_launch_default_for_uri(
+    let mut done = false;
+    unsafe extern "C" fn callback(
+      _source_object: *mut GObject,
+      res: *mut GAsyncResult,
+      user_data: gpointer,
+    ) {
+      let mut error: *mut GError = null_mut();
+      let success = g_app_info_launch_default_for_uri_finish(res, &mut error);
+      if success == GFALSE {
+        check_error(error);
+      }
+      let done = user_data as *mut bool;
+      *done = true;
+    }
+    g_app_info_launch_default_for_uri_async(
       uri,
       null_mut::<GAppLaunchContext>(),
-      &mut error,
+      null_mut::<GCancellable>(),
+      Some(callback),
+      &mut done as *mut bool as gpointer,
     );
-    if !error.is_null() {
-      panic!("GTK error: {:?}", error)
+
+    while !done {
+      g_main_context_iteration(null_mut::<GMainContext>(), GTRUE);
     }
 
     g_free(uri as *mut _);
   }
+}
+
+#[allow(unreachable_code)]
+unsafe fn check_error(error: *mut GError) {
+  if error.is_null() {
+    return;
+  }
+
+  panic!(
+    "{} (GTK error {})",
+    CStr::from_ptr((*error).message).to_string_lossy(),
+    (*error).code,
+  );
+
+  // Well, I might add proper error handling to native_ui... So in the meantime
+  // I'll put this `g_error_free` call here so that I don't forget it in the
+  // future.
+  g_error_free(error);
 }
