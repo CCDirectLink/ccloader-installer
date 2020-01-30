@@ -101,12 +101,13 @@ pub fn show_alert(config: AlertConfig) -> Option<AlertResponse> {
 
     let response: NSModalResponse = msg_send![alert, runModal];
 
-    match response {
-      NSAlertFirstButtonReturn => Some(AlertResponse::Button1Pressed),
-      NSAlertSecondButtonReturn => Some(AlertResponse::Button2Pressed),
-      NSAlertThirdButtonReturn => Some(AlertResponse::Button3Pressed),
-      _ => None,
-    }
+    use AlertResponse::*;
+    Some(match response {
+      NSAlertFirstButtonReturn => Button1Pressed,
+      NSAlertSecondButtonReturn => Button2Pressed,
+      NSAlertThirdButtonReturn => Button3Pressed,
+      _ => return None,
+    })
   })
 }
 

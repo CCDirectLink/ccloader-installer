@@ -3,12 +3,17 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-use macos as sys;
+use self::macos as sys;
 
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-use windows as sys;
+use self::windows as sys;
+
+#[cfg(all(unix, not(target_os = "macos")))]
+mod gtk;
+#[cfg(all(unix, not(target_os = "macos")))]
+use self::gtk as sys;
 
 #[derive(Debug, Clone)]
 pub struct AlertConfig {
