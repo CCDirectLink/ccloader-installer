@@ -14,7 +14,7 @@ Some graphical file managers incorrectly identify PIEs (position-independent exe
 RUSTFLAGS='-C relocation-model=dynamic-no-pic' cargo build --release
 ```
 
-Beware, however, that this used to break linking if the executable depended on procedural macros. For some reason this works now, though unfortunately I wasn't able to find much in my browser or shell history. Neither the solution I tried using before, nor the workaround I found, nor where I found it. Here's a (probably) relevant ticket though: rust-lang/cargo#5115.
+Beware, however, that this used to break linking if the executable depended on procedural macros. For some reason this works now, though unfortunately I wasn't able to find much in my browser or shell history. Neither the solution I tried using before, nor the workaround I found, nor where I found it. Here's a (probably) relevant ticket though: [rust-lang/cargo#5115](https://github.com/rust-lang/cargo/issues/5115).
 
 ### macOS
 
