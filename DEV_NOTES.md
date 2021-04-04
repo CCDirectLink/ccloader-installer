@@ -29,7 +29,7 @@ Always link statically with both libcurl and Zlib as they are obviously not pres
 Always create tars with
 
 ```sh
-tar --create --autho-compress --verbose --owner=0 --group=0 --file ccloader-installer_v1.2.3_linux.tar.gz ccloader-installer
+tar --create --auto-compress --verbose --owner=0 --group=0 --file ccloader-installer_v1.2.3_linux.tar.gz ccloader-installer
 ```
 
 or similar. The `--owner=0` and `--group=0` options remove UIDs and GIDs from the archived files.
