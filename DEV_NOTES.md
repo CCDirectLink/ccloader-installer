@@ -4,6 +4,8 @@
 
 ## Building distributables
 
+**NOTE:** Most of this part is irrelevant now since building of release distributables is done on CI.
+
 ### Linux
 
 Always link dynamically. libcurl can be assumed to be installed on virtually all distros (or at least Linux Mint), same with Zlib (which is a dependency of libcurl), and lastly GTK will be installed on any system with GUI (why would you use CCLoader installer on a headless system?). Plus GTK is a copyleft-library, so I wouldn't risk statically linking it into a non-GPL program.
@@ -37,7 +39,7 @@ or similar. The `--owner=0` and `--group=0` options remove UIDs and GIDs from th
 To compress zips I personally use the good old `zip` command:
 
 ```sh
-zip -r ccloader-installer_v1.2.3_windows.zip ccloader-installer.exe
+zip -r -X ccloader-installer_v1.2.3_windows.zip ccloader-installer.exe
 ```
 
 Additionally, when compressing the archive for macOS don't forget to remove `.DS_Store` and `__MACOSX` meta-files. This can be done by either setting the `COPYFILE_DISABLE` environment variable, or passing the `--disable-copyfile` flag to the `tar` command. See <https://superuser.com/q/61185/1272235>.

@@ -1,0 +1,1 @@
+The official automatic installer for [CCLoader](https://github.com/CCDirectLink/CCLoader). See the [README](https://github.com/CCDirectLink/ccloader-installer#readme) for more information and usage instructions.

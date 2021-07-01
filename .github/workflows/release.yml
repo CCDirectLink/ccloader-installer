@@ -1,0 +1,272 @@
+# Sometimes I just like to over-engineer.
+
+name: Release
+on:
+  push:
+    tags:
+      - v*
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: 10.13
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust toolchain
+        id: install_rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Get the release info
+        id: release_info
+        run: |
+          cargo read-manifest | jq -r '"::set-output name=title::\(.name) v\(.version)"'
+
+      - name: Create the release
+        id: create_release
+        uses: softprops/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: ${{ steps.release_info.outputs.title }}
+          draft: true
+          prerelease: false
+          body_path: .github/release_body_template.md
+
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+
+  build:
+    name: Build
+    needs: create_release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-10.14]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust toolchain
+        id: install_rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install OS-specific dependencies
+        run: |
+          case "$RUNNER_OS" in
+
+            (Linux)
+            sudo apt-get update
+            sudo apt-get install libcurl4-openssl-dev libz-dev libgtk-3-dev
+            ;;
+
+            (macOS)
+            brew install coreutils findutils gnu-tar
+            echo >>"$GITHUB_PATH" "/usr/local/opt/coreutils/libexec/gnubin"
+            echo >>"$GITHUB_PATH" "/usr/local/opt/findutils/libexec/gnubin"
+            echo >>"$GITHUB_PATH" "/usr/local/opt/gnu-tar/libexec/gnubin"
+            ;;
+
+            (Windows)
+            choco install zip
+            ;;
+
+          esac
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            # NOTE: `target` is not cached for releases
+          key: |
+            r1/${{ github.workflow }}/${{ runner.os }}/rust/${{ steps.install_rust.outputs.rustc_hash }}/${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            r1/${{ github.workflow }}/${{ runner.os }}/rust/${{ steps.install_rust.outputs.rustc_hash }}/
+
+      - name: cargo build
+        run: CARGO_PROFILE_RELEASE_LTO=thin cargo build --verbose --release
+
+      - name: Package
+        run: |
+          tmpdir="$RUNNER_TEMP"
+          pkgdir="${tmpdir}/pkgdir"
+          mkdir -p "$pkgdir"
+
+          # <https://github.com/rust-analyzer/rust-analyzer/pull/6912/>
+          platform_triple="$(rustc --version --verbose | awk '/^host:/ { print $2 }')"
+          cargo metadata --format-version=1 --filter-platform="$platform_triple" >"${tmpdir}/cargo_metadata.json"
+
+          # Alright, let's needlessly parse some complicated JSON structures
+          # just fo flex our jq muscles...
+          # <https://doc.rust-lang.org/cargo/commands/cargo-metadata.html#output-format>
+          rust_targets_list="$(jq -r '
+            # Step 1: Convert a list of pkgids in workspace_members into a
+            # dictionary, with which we can use the has() function instead of
+            # linear lookup.
+            (.workspace_members | map({ (.): true }) | add) as $workspace |
+            # Step 2: Filter only the packages that belong to our workspace.
+            .packages | map(select(.id | in($workspace)) |
+              # Step 3: Select the targets of those packages which produce
+              # usable compilation artifacts, i.e. executables and dynamic
+              # libraries. (Note that static libraries MAY be useful as well,
+              # but I do not want to complicate the code even further.) Also,
+              # the joke from the documentation of `empty` came to my mind...
+              .targets[] | { name, kind: (.kind[] | if . == "bin" then "exe" elif . == "dylib" or . == "cdylib" then "lib" else empty end) }
+            ) |
+            # Step 4: format for consumption by the shell
+            .[] | "\(.kind)=\(.name)"
+          ' "${tmpdir}/cargo_metadata.json")"
+          # Turns out the above was an overkill and isn't actually needed.
+          # Whoops. :trololo:
+
+          # Well, at least this came in handy in the end.
+          rust_target_dir="$(jq -r ".target_directory" "${tmpdir}/cargo_metadata.json")"
+
+          cargo read-manifest > "${tmpdir}/cargo_manifest.json"
+          crate_name="$(jq -r '.name' "${tmpdir}/cargo_manifest.json")"
+          crate_version="$(jq -r '.version' "${tmpdir}/cargo_manifest.json")"
+          crate_bin_name="$(jq -r '
+            .targets | map({ name, kind: .kind[] } | select(.kind == "bin") | .name | select(length > 0)) |
+            if length == 1 then .[0] else ("There must be exactly one executable, instead found: \(.)" | error) end
+          ' "${tmpdir}/cargo_manifest.json")"
+
+          app_name="$crate_name"
+          app_bundle_id="org.ccdirectlink.${app_name}"
+          app_version="${crate_version}"
+
+          archive_name="${crate_name}_v${crate_version}"
+
+          case "$RUNNER_OS" in
+
+            (Linux)
+            archive_name+="_linux"
+            cp -a "${rust_target_dir}/release/${crate_bin_name}" "$pkgdir"
+            ;;
+
+            (macOS)
+            archive_name+="_macos"
+            mkdir -p "${pkgdir}/${app_name}.app/Contents/MacOS"
+            cat > "${pkgdir}/${app_name}.app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>English</string>
+            <key>CFBundleDisplayName</key>
+            <string>${app_name}</string>
+            <key>CFBundleExecutable</key>
+            <string>${crate_name}</string>
+            <key>CFBundleIdentifier</key>
+            <string>${app_bundle_id}</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>${app_name}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${app_version}</string>
+            <key>CFBundleVersion</key>
+            <string>${app_version}</string>
+            <key>CSResourcesFileMapped</key>
+            <true/>
+            <key>LSMinimumSystemVersion</key>
+            <string>${MACOSX_DEPLOYMENT_TARGET}</string>
+            <key>LSRequiresCarbon</key>
+            <true/>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+            cp -a "${rust_target_dir}/release/${crate_bin_name}" "${pkgdir}/${app_name}.app/Contents/MacOS"
+            ;;
+
+            (Windows)
+            archive_name+="_windows"
+            cp -a "${rust_target_dir}/release/${crate_bin_name}.exe" "$pkgdir"
+            ;;
+
+            (*)
+            declare -p RUNNER_OS >&2
+            exit 1
+            ;;
+
+          esac
+
+          # <https://reproducible-builds.org/docs/archives/>
+          # <https://wiki.debian.org/ReproducibleBuilds/TimestampsInTarball>
+          # <https://wiki.debian.org/ReproducibleBuilds/TimestampsInZip>
+          # <http://h2.jaguarpaw.co.uk/posts/reproducible-tar/>
+          # <https://github.com/L-Sherry/Bob-Rank/blob/120e7eab2e891771408632d3eea422635936f740/.github/workflows/ccmod.sh#L11-L16>
+          # <https://github.com/dmitmel/cc-world-map-overhaul/blob/c0a51cf591088808aed7a0990a2466756740a6cf/.github/workflows/release.sh#L76-L85>
+
+          # Apparently the timestamps in Zip archives depend on the current
+          # timezone. Let's set it to UTC for everything just in case.
+          export TZ=UTC
+          commit_timestamp="$(git log --max-count=1 --date=unix --pretty=format:%cd)"
+
+          pushd "$pkgdir" >/dev/null
+
+          # The strange `find` invocation is a workaround for slight platform
+          # differences (even though GNU findutils are used everywhere).
+          find . -mindepth 1 -print | LC_ALL=C sort >"${tmpdir}/archive_file_list.txt"
+          # Set mtimes of all files to the commit timestamp.
+          xargs <"${tmpdir}/archive_file_list.txt" --no-run-if-empty -d'\n' touch --no-dereference --date="@${commit_timestamp}"
+
+          if [[ "$RUNNER_OS" != "Windows" ]]; then
+            archive_name+=".tar.gz"
+            archive_full_path="${tmpdir}/${archive_name}"
+            # <https://unix.stackexchange.com/a/438330/411555>
+            tar --create --use-compress-program="gzip -n" --file="$archive_full_path" \
+              --numeric-owner --owner=0 --group=0 \
+              --no-recursion --files-from="${tmpdir}/archive_file_list.txt"
+          else
+            archive_name+=".zip"
+            archive_full_path="${tmpdir}/${archive_name}"
+            zip --quiet --must-match --no-wild -X --names-stdin "$archive_full_path" <"${tmpdir}/archive_file_list.txt"
+          fi
+
+          popd >/dev/null
+
+          printf "%s\n" "${archive_full_path}" >>"${tmpdir}/release_assets.txt"
+
+      # Moved into its own step so that fewer processes have access to the
+      # secrets.
+      - name: Upload
+        env:
+          RELEASE_UPLOAD_URL: ${{ needs.create_release.outputs.upload_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # <https://stackoverflow.com/a/40216228/12005228>
+          # Insipred by <https://github.com/L-Sherry/French-CC/blob/676ab83f5fa9d185539790c01bfe63c08b8ab435/.github/workflows/release.yml#L27-L45>
+          release_upload_url="${RELEASE_UPLOAD_URL%\{\?*\}}"  # remove the RFC 6570 templates
+          while IFS= read -r release_asset; do
+            curl \
+              --fail --location --globoff \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@${release_asset}" \
+              "${release_upload_url}?name=$(basename "$release_asset")" \
+              --output "/dev/null"
+          done < "${RUNNER_TEMP}/release_assets.txt"
