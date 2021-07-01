@@ -17,7 +17,7 @@ log4rs = { version = "*", default-features = false, features = ["ansi_writer", "
 time = "^0.1"
 backtrace = "*"
 dirs = "*"
-curl = { git = "https://github.com/alexcrichton/curl-rust.git" }
+curl = "*"
 libz-sys = "*"  # dependency needed just for enabling static linking with libz
 http = "*"
 serde = "*"
