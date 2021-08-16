@@ -131,4 +131,4 @@ Basically because `.tar.gz` stores macOS and Linux (i.e. UNIX) file attributes, 
 
 ## Contacts
 
-`ccloader-installer` is developed primarily by me, [@dmitmel](https://github.com/dmitmel). You can contact me (to request features or support) either via [the bug tracker](https://github.com/CCDirectLink/ccloader-installer/issues), [the official CrossCode Discord server](https://discord.gg/UAQBbnd) or [the CCDirectLink Discord server](https://discord.gg/TFs6n5v) (the last way is the preffered one).
+`ccloader-installer` is developed primarily by me, [@dmitmel](https://github.com/dmitmel). You can contact me (to request features or support) either via [the bug tracker](https://github.com/CCDirectLink/ccloader-installer/issues), [the official CrossCode Discord server](https://discord.gg/crosscode) or [the CCDirectLink Discord server](https://discord.gg/3Xw69VjXfW) (the last way is the preffered one).
