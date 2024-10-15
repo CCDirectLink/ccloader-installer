@@ -25,7 +25,7 @@ const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const CCMODDB_DATA_URL: &str =
-  "https://github.com/CCDirectLink/CCModDB/raw/master/npDatabase.json";
+  "https://raw.githubusercontent.com/CCDirectLink/CCModDB/refs/heads/stable/npDatabase.json";
 
 const BUG_REPORT_TEXT: &str =
   "Please, contact @dmitmel on either GitHub, CrossCode official Discord server, or CCDirectLink Discord server. Bugs can be reported at https://github.com/dmitmel/ccloader-installer/issues";
